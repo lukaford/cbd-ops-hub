@@ -121,7 +121,7 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
           <div>
             <div className="what">folders install within {RISK_WINDOW_DAYS} days and are not yet received by production</div>
             <div className="sub">
-              {atRiskJobs} jobs. Soonest: job <span className="mono">{soonest.jobNumber}</span> on {shortDate(soonest.installOn)}, waiting on{" "}
+              {atRiskJobs} jobs. Soonest: job <span className="jobno" style={{ fontSize: "inherit" }}>{soonest.jobNumber}</span> on {shortDate(soonest.installOn)}, waiting on{" "}
               {STEPS[soonest.nextStep!].name.toLowerCase()}.
             </div>
           </div>
@@ -178,7 +178,8 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
           <thead>
             <tr>
               <th>Install</th>
-              <th>Job</th>
+              <th>Job #</th>
+              <th>Customer</th>
               <th>Folder</th>
               <th>Steps 1 to 9</th>
               <th>Waiting on</th>
@@ -189,7 +190,7 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
           <tbody>
             {list.length === 0 && (
               <tr>
-                <td colSpan={7} className="empty">No folders match. Widen the install window or clear the search.</td>
+                <td colSpan={8} className="empty">No folders match. Widen the install window or clear the search.</td>
               </tr>
             )}
             {list.map((f) => {
@@ -226,10 +227,11 @@ function FolderRows({ f, open, today, toggle }: { f: BoardFolder; open: boolean;
           <span className={`pill ${RISK_CLASS[f.risk]}`}>{riskText(f)}</span>
         </td>
         <td>
+          <span className="jobno">{f.jobNumber}</span>
+        </td>
+        <td>
           <Link className="cust" href={toggle} scroll={false} aria-expanded={open}>{f.customer}</Link>
-          <div className="small">
-            <span className="mono">{f.jobNumber}</span> · {f.description}
-          </div>
+          <div className="small">{f.description}</div>
         </td>
         <td>
           {f.letter ? `Folder ${f.letter}` : "Folder"}
@@ -273,7 +275,7 @@ function FolderRows({ f, open, today, toggle }: { f: BoardFolder; open: boolean;
       </tr>
       {open && (
         <tr className="detail">
-          <td colSpan={7}>
+          <td colSpan={8}>
             <div className="small" style={{ marginBottom: 8 }}>
               Contract {md(f.contractOn)} · Production due {md(f.dueOn)} · Install {md(f.installOn)} · Job {money(f.amountCents)}, balance{" "}
               {money(f.balanceCents)}
