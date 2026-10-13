@@ -19,6 +19,8 @@ async function connect(url: string | undefined): Promise<Db> {
     await migrate(db, { migrationsFolder });
     return db as unknown as Db;
   }
+  // Hosted servers have no lasting disk, so the built-in database would lose everything.
+  if (process.env.VERCEL) throw new Error("Set DATABASE_URL (for example from Neon) in the hosting settings.");
   return connectPglite(path.join(process.cwd(), ".data", "pglite"));
 }
 

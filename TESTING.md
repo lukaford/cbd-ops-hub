@@ -2,7 +2,7 @@
 
 The app reads from JobTread and never changes anything there.
 
-1. Install **Node.js** (the LTS version) from https://nodejs.org. Accept the defaults.
+1. On Windows, the start file installs **Node.js** for you the first time. On a Mac, install the LTS version from https://nodejs.org.
 2. Download the app while signed in to GitHub:
    https://github.com/lukaford/cbd-ops-hub/archive/refs/heads/jobtread-sync.zip
    Unzip it somewhere easy to find, like your Desktop.
@@ -12,6 +12,14 @@ The app reads from JobTread and never changes anything there.
    - Mac: `start-mac.command` (the first time, right-click it, choose **Open**, then **Open** again)
 5. Paste your JobTread key when asked. It is saved only in a file called `.env.local` in that folder.
 
-The first start installs and builds the app, which takes a few minutes. After that, your browser opens http://localhost:3000 with the board. Leave the black window open while you use it; closing it stops the app.
+The first start also puts a **CBD Ops Hub** icon on your Windows desktop, then installs and builds the app, which takes a few minutes. After that, your browser opens http://localhost:3000 with the board. Leave the black window open while you use it; closing it stops the app.
 
 To change the key later, delete `.env.local` and start again. To see folder detail from Manager, choose **Paste Special Orders** and paste the table.
+
+## Putting it online
+
+Set these in the host's environment settings:
+
+- `DATABASE_URL`: a Postgres connection string, for example from Neon.
+- `JOBTREAD_GRANT_KEY`: the JobTread key.
+- `APP_PASSWORD`: the shared password people type on the sign-in page. Without it, anyone with the link can see the board.
