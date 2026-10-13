@@ -20,6 +20,9 @@ const ACTIONS: Record<string, string> = {
   client_created: "Added a client",
   client_link_created: "Made a client sign-in link",
   client_sign_in: "Client signed in",
+  client_updated: "Changed a client",
+  designer_requested: "Asked the front office to name a designer",
+  designer_assigned: "Assigned a designer to a job",
 };
 
 export default async function ActivityPage() {
@@ -33,7 +36,7 @@ export default async function ActivityPage() {
   const userName = new Map(people.map((u) => [u.id, u.name]));
   const clientName = new Map(clientRows.map((c) => [c.id, c.name]));
   const subject = (e: (typeof events)[number]) =>
-    e.entity === "user" ? userName.get(Number(e.entityId)) : e.entity === "client" ? clientName.get(Number(e.entityId)) : e.entity === "email" ? e.entityId : "";
+    e.entity === "user" ? userName.get(Number(e.entityId)) : e.entity === "client" ? clientName.get(Number(e.entityId)) : e.entity === "email" || e.entity === "job" ? e.entityId : e.entity === "jobs" ? ((e.data as { jobs?: string[] }).jobs ?? []).join(", ") : "";
 
   return (
     <section>

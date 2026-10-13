@@ -12,7 +12,7 @@ PC today, hosted Postgres (Neon) later. Same tables either way; migrations in
 | Folder steps | `jobs`, `folders`, `folder_steps`, `special_orders`, `import_batches` | Manager Special Orders paste (rebuilt each paste) |
 | Reports | `saved_reports` | The hub |
 | Sales paperwork | `form_templates`, `paperwork_packets`, `paperwork_docs`, `paperwork_files`, `paperwork_signatures`, `paperwork_issues` | The hub |
-| **Accounts** | `users`, `staff_categories`, `user_categories`, `job_assignments`, `clients`, `client_jobs`, `auth_sessions`, `auth_tokens`, `audit_events` | The hub |
+| **Accounts** | `users`, `staff_categories`, `notifications`, `designer_requests`, `user_categories`, `job_assignments`, `clients`, `client_jobs`, `auth_sessions`, `auth_tokens`, `audit_events` | The hub |
 
 Jobs are joined by **job number**, never by a row id, because the JobTread and
 Manager copies are replaced on every refresh.
@@ -83,6 +83,19 @@ paperwork (list, packets, sheets, files) and clients. JobTread has no designer
 field. In a sample of 18 jobs, the first photos' uploader matched Manager's
 designer on 16; the other two were uploaded by office accounts, which the
 Manager name still covers.
+
+### Jobs with no designer
+
+After every JobTread refresh and Manager paste, the app looks for open jobs that
+no designer account owns and that have no designer name in Manager. Each new
+one triggers an alert (**`notifications`**, shown as **Alerts** in the menu,
+and emailed when email is set up) to everyone whose categories include "Assign
+designers to jobs". That's the starter **Front office manager** category; if
+nobody has it, the admins are asked. **`designer_requests`** remembers which
+jobs were already asked about, so each job is asked about once, and a big batch
+(like the first run) becomes one summary alert. The **Needs designer** page
+lists those jobs with whoever took their photos as a hint. Assigning one adds a
+`job_assignments` row and clears its alert.
 
 ## Client sign-in
 

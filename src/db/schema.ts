@@ -345,3 +345,26 @@ export const auditEvents = pgTable(
   },
   (t) => [index("audit_events_at").on(t.at), index("audit_events_entity").on(t.entity, t.entityId)],
 );
+
+// In-app alerts: a bell in the menu shows unread ones.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    // e.g. "designer_needed"
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    link: text("link").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [index("notifications_user_unread").on(t.userId, t.readAt)],
+);
+
+// Jobs the front office has been asked to give a designer, so each job is asked about once.
+export const designerRequests = pgTable("designer_requests", {
+  jobNumber: text("job_number").primaryKey(),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+});
