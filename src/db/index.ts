@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { PGlite } from "@electric-sql/pglite";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 
@@ -35,24 +36,38 @@ export function localDataDir(env: Record<string, string | undefined> = process.e
 
 // If the local database is damaged it is set aside (never deleted, since it can
 // hold paperwork and signatures) and a fresh one is started rather than stopping the app.
+// Only a database that won't open counts as damaged: a failed migration, or a database
+// another copy of the app has open, says nothing about the data, so those just fail.
 async function connectLocal(dir: string): Promise<Db> {
+  let client: PGlite;
   try {
-    return await connectPglite(dir);
+    client = await openPglite(dir);
   } catch (err) {
-    if (!existsSync(dir)) throw err;
+    if (!existsSync(dir) || process.env.NEXT_PHASE === "phase-production-build") throw err;
     const aside = `${dir}-damaged-${Date.now()}`;
     console.error(`Local database could not open (${err instanceof Error ? err.message : err}); moving it to ${aside} and starting fresh.`);
     renameSync(dir, aside);
-    return connectPglite(dir);
+    client = await openPglite(dir);
   }
+  return migratePglite(client);
 }
 
 async function connectPglite(dir: string | undefined): Promise<Db> {
+  return migratePglite(await openPglite(dir));
+}
+
+async function openPglite(dir: string | undefined): Promise<PGlite> {
   if (dir) mkdirSync(dir, { recursive: true });
   const { PGlite } = await import("@electric-sql/pglite");
+  const client = new PGlite(dir);
+  await client.waitReady;
+  return client;
+}
+
+async function migratePglite(client: PGlite): Promise<Db> {
   const { drizzle } = await import("drizzle-orm/pglite");
   const { migrate } = await import("drizzle-orm/pglite/migrator");
-  const db = drizzle(new PGlite(dir), { schema });
+  const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder });
   return db as unknown as Db;
 }
