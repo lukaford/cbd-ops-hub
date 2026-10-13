@@ -19,7 +19,7 @@ To read from JobTread, create a grant key in JobTread's API settings (ideally fo
 
 For folder detail, choose **Paste Special Orders** and paste the table copied from Manager.
 
-Without `DATABASE_URL`, data is kept in a built-in database under `.data/`. Set `DATABASE_URL` to a hosted Postgres connection string (Supabase or Neon) for a shared deployment. `SHOP_TIME_ZONE` sets the shop's time zone (default `America/New_York`).
+Without `DATABASE_URL`, data is kept in a built-in database in `%LOCALAPPDATA%\CBD Ops Hub` on Windows or `~/.cbd-ops-hub` elsewhere (set `DATA_DIR` to change it). It is kept out of the app folder because OneDrive or iCloud syncing corrupts it, and if it is ever damaged the app sets it aside and starts fresh. Set `DATABASE_URL` to a hosted Postgres connection string (Supabase or Neon) for a shared deployment. `SHOP_TIME_ZONE` sets the shop's time zone (default `America/New_York`).
 
 ## How JobTread is read
 

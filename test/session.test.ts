@@ -28,3 +28,12 @@ describe("sign-in", () => {
     expect(await passwordMatches("")).toBe(false);
   });
 });
+
+describe("local data folder", () => {
+  it("stays out of the app folder", async () => {
+    const { localDataDir } = await import("@/db");
+    expect(localDataDir({ LOCALAPPDATA: "C:\\Users\\x\\AppData\\Local" }, "win32")).toContain("CBD Ops Hub");
+    expect(localDataDir({ DATA_DIR: "/srv/hub" }, "linux")).toBe("/srv/hub/pglite");
+    expect(localDataDir({}, "darwin")).toContain(".cbd-ops-hub");
+  });
+});
