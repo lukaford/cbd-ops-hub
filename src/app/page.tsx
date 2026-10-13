@@ -1,15 +1,20 @@
 import Link from "next/link";
 import { getDb } from "@/db";
-import { isAtRisk, loadBoard, todayIn, type BoardFolder } from "@/lib/board";
+import { todayIn } from "@/lib/board";
+import { isJobAtRisk, loadJobBoard, type BoardJob } from "@/lib/jobBoard";
+import { STAGES, stageInfo } from "@/lib/jobtread/fields";
+import { jobTreadConfigured, refreshFromJobTread } from "@/lib/jobtread/refresh";
 import { RISK_WINDOW_DAYS, type Risk } from "@/lib/manager/progress";
-import { PRODUCTION_STEPS, STEPS } from "@/lib/manager/steps";
+import { STEPS } from "@/lib/manager/steps";
+import { refreshNow } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 const TIME_ZONE = process.env.SHOP_TIME_ZONE ?? "America/New_York";
 const WINDOWS = [7, 14, 30] as const;
+const NO_STAGE = "none";
 
-type Params = { window?: string; step?: string; q?: string; ready?: string; open?: string };
+type Params = { window?: string; stage?: string; q?: string; ready?: string };
 
 const RISK_CLASS: Record<Risk, string> = {
   "in-production": "ok",
@@ -32,67 +37,68 @@ function md(iso: string | null): string {
   return `${m}/${d}`;
 }
 
-function money(cents: number | null): string {
-  return cents === null ? "—" : `$${Math.round(cents / 100).toLocaleString("en-US")}`;
-}
-
-function riskText(f: BoardFolder): string {
-  if (f.nextStep === null) return "In production";
-  const d = f.daysToInstall;
+function riskText(j: BoardJob): string {
+  if (j.risk === "in-production") return stageInfo(j.stage)?.name ?? "In production";
+  const d = j.daysToInstall;
   if (d === null) return "No install date";
   if (d < 0) return `${-d}d past install`;
   if (d === 0) return "Installs today";
   return `${d}d to install`;
 }
 
-function ago(today: string, iso: string): string {
-  const n = Math.round((Date.parse(today) - Date.parse(iso)) / 864e5);
-  return n <= 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`;
+function since(today: string, at: Date | null): string {
+  if (!at) return "";
+  const day = todayIn(TIME_ZONE, at);
+  const n = Math.round((Date.parse(today) - Date.parse(day)) / 864e5);
+  return `since ${md(day)}${n > 0 ? `, ${n}d` : ", today"}`;
 }
 
-export default async function BoardPage({ searchParams }: { searchParams: Promise<Params> }) {
+export default async function JobsPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
   const db = await getDb();
   const today = todayIn(TIME_ZONE);
-  const board = await loadBoard(db, today);
+  const refresh = await refreshFromJobTread(db, today);
+  const board = await loadJobBoard(db, today);
 
-  if (!board.lastImport) {
+  if (!board.lastSync) {
     return (
-      <>
-        <header className="top">
-          <div>
-            <div className="label">Closets by Design · Production</div>
-            <h1>Install Readiness Board</h1>
-            <p>No Special Orders table has been pasted yet.</p>
-          </div>
-          <Link className="btn primary" href="/import">Paste Special Orders</Link>
-        </header>
-      </>
+      <header className="top">
+        <div>
+          <div className="label">Closets by Design · Production</div>
+          <h1>Install Readiness Board</h1>
+          {jobTreadConfigured() ? (
+            <p>Couldn&apos;t read from JobTread yet{refresh.error ? `: ${refresh.error}` : "."}</p>
+          ) : (
+            <p>
+              Not connected to JobTread yet. Add a JobTread grant key as <code>JOBTREAD_GRANT_KEY</code> (see the README), or use the{" "}
+              <Link href="/folders">folders board</Link> from a Manager paste.
+            </p>
+          )}
+        </div>
+      </header>
     );
   }
 
   const windowDays = WINDOWS.find((w) => String(w) === params.window) ?? (params.window === "all" ? null : 14);
-  const stepFilter = params.step ?? null;
+  const stageFilter = params.stage ?? null;
   const showReady = params.ready === "1";
   const q = (params.q ?? "").trim().toLowerCase();
 
-  const atRisk = board.folders.filter(isAtRisk);
-  const atRiskJobs = new Set(atRisk.map((f) => f.jobNumber)).size;
+  const atRisk = board.jobs.filter(isJobAtRisk);
   const soonest = atRisk[0];
-
-  const queueKey = (f: BoardFolder) => (f.nextStep === null ? "done" : String(f.nextStep));
-  const queueCount = new Map<string, number>();
-  const queueRisk = new Map<string, number>();
-  for (const f of board.folders) {
-    queueCount.set(queueKey(f), (queueCount.get(queueKey(f)) ?? 0) + 1);
-    if (isAtRisk(f)) queueRisk.set(queueKey(f), (queueRisk.get(queueKey(f)) ?? 0) + 1);
+  const stageKey = (j: BoardJob) => (stageInfo(j.stage) ? j.stage! : NO_STAGE);
+  const count = new Map<string, number>();
+  const riskCount = new Map<string, number>();
+  for (const j of board.jobs) {
+    count.set(stageKey(j), (count.get(stageKey(j)) ?? 0) + 1);
+    if (isJobAtRisk(j)) riskCount.set(stageKey(j), (riskCount.get(stageKey(j)) ?? 0) + 1);
   }
 
-  const list = board.folders.filter((f) => {
-    if (stepFilter) return queueKey(f) === stepFilter && matches(f, q);
-    if (!showReady && f.nextStep === null) return false;
-    if (windowDays !== null && f.daysToInstall !== null && f.daysToInstall > windowDays) return false;
-    return matches(f, q);
+  const list = board.jobs.filter((j) => {
+    if (stageFilter) return stageKey(j) === stageFilter && matches(j, q);
+    if (!showReady && j.risk === "in-production") return false;
+    if (windowDays !== null && j.daysToInstall !== null && j.daysToInstall > windowDays) return false;
+    return matches(j, q);
   });
 
   const href = (next: Partial<Params>) => {
@@ -101,6 +107,8 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
     return qs.size ? `/?${qs}` : "/";
   };
 
+  const queues = [...STAGES.map((s) => ({ key: s.name, name: s.name, dept: s.department })), { key: NO_STAGE, name: "Status 2.0 not set", dept: "Has an install date" }];
+
   return (
     <>
       <header className="top">
@@ -108,43 +116,44 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
           <div className="label">Closets by Design · Production</div>
           <h1>Install Readiness Board</h1>
           <p>
-            Every production folder by its firm install date, from the Special Orders paste of{" "}
-            {board.lastImport.createdAt.toLocaleString("en-US", { timeZone: TIME_ZONE, dateStyle: "medium", timeStyle: "short" })}.
+            Every sold job by its confirmed install date, read from JobTread at{" "}
+            {board.lastSync.createdAt.toLocaleString("en-US", { timeZone: TIME_ZONE, dateStyle: "medium", timeStyle: "short" })}. Nothing is changed in JobTread.
           </p>
+          {refresh.error && <p className="small" style={{ color: "var(--crit)" }}>Couldn&apos;t refresh from JobTread: {refresh.error}</p>}
         </div>
-        <Link className="btn primary" href="/import">Paste a newer table</Link>
+        <form action={refreshNow}>
+          <button className="btn primary" type="submit">Refresh from JobTread</button>
+        </form>
       </header>
 
       <section className={`alert${atRisk.length ? "" : " calm"}`}>
         <div className="big num">{atRisk.length}</div>
         {atRisk.length ? (
           <div>
-            <div className="what">folders install within {RISK_WINDOW_DAYS} days and are not yet received by production</div>
+            <div className="what">jobs install within {RISK_WINDOW_DAYS} days and are not yet in production</div>
             <div className="sub">
-              {atRiskJobs} jobs. Soonest: job <span className="jobno" style={{ fontSize: "inherit" }}>{soonest.jobNumber}</span> on {shortDate(soonest.installOn)}, waiting on{" "}
-              {STEPS[soonest.nextStep!].name.toLowerCase()}.
+              Soonest: job <span className="jobno" style={{ fontSize: "inherit" }}>{soonest.jobNumber}</span> on {shortDate(soonest.installOn)}, in{" "}
+              {soonest.stage ?? "no Status 2.0 stage"}.
             </div>
           </div>
         ) : (
           <div>
-            <div className="what">Every folder installing in the next {RISK_WINDOW_DAYS} days is in production</div>
+            <div className="what">Every job installing in the next {RISK_WINDOW_DAYS} days is in production</div>
             <div className="sub">Nothing needs chasing right now.</div>
           </div>
         )}
       </section>
 
       <section>
-        <div className="label" style={{ marginBottom: 8 }}>Folders waiting on each step · click one to filter</div>
+        <div className="label" style={{ marginBottom: 8 }}>Jobs in each Status 2.0 stage · click one to filter</div>
         <div className="queues">
-          {[...PRODUCTION_STEPS.map(String), "done"].map((k) => {
-            const name = k === "done" ? "All 9 steps done" : `${k}. ${STEPS[Number(k)].name}`;
-            const dept = k === "done" ? "In production" : STEPS[Number(k)].department;
-            const risk = queueRisk.get(k);
+          {queues.map((s) => {
+            const risk = riskCount.get(s.key);
             return (
-              <Link key={k} className="queue" aria-pressed={stepFilter === k} href={href({ step: stepFilter === k ? undefined : k, open: undefined })}>
-                <span className="n num">{queueCount.get(k) ?? 0}</span>
-                <span className="s">{name}</span>
-                <span className="d">{dept}</span>
+              <Link key={s.key} className="queue" aria-pressed={stageFilter === s.key} href={href({ stage: stageFilter === s.key ? undefined : s.key })}>
+                <span className="n num">{count.get(s.key) ?? 0}</span>
+                <span className="s">{s.name}</span>
+                <span className="d">{s.dept}</span>
                 <span className="risk">{risk ? `${risk} installing within ${RISK_WINDOW_DAYS} days` : ""}</span>
               </Link>
             );
@@ -153,8 +162,8 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
       </section>
 
       <form className="controls" method="get" action="/">
-        {stepFilter && <input type="hidden" name="step" value={stepFilter} />}
-        <input type="search" name="q" defaultValue={params.q ?? ""} placeholder="Search customer, job #, designer, installer" aria-label="Search" />
+        {stageFilter && <input type="hidden" name="stage" value={stageFilter} />}
+        <input type="search" name="q" defaultValue={params.q ?? ""} placeholder="Search customer, job #, city" aria-label="Search" />
         <label>
           Installing within{" "}
           <select name="window" defaultValue={windowDays === null ? "all" : String(windowDays)}>
@@ -165,11 +174,11 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
           </select>
         </label>
         <label>
-          <input type="checkbox" name="ready" value="1" defaultChecked={showReady} /> Show folders already received by production
+          <input type="checkbox" name="ready" value="1" defaultChecked={showReady} /> Show jobs already in production
         </label>
         <button className="btn" type="submit">Apply</button>
         <span className="small">
-          {list.length} of {board.folders.length} folders shown{stepFilter ? " · step filter on" : ""}
+          {list.length} of {board.jobs.length} jobs shown{stageFilter ? " · stage filter on" : ""}
         </span>
       </form>
 
@@ -180,138 +189,95 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
               <th>Install</th>
               <th>Job #</th>
               <th>Customer</th>
-              <th>Folder</th>
-              <th>Steps 1 to 9</th>
-              <th>Waiting on</th>
-              <th>Last step</th>
-              <th>Designer · Installer</th>
+              <th>Status 2.0</th>
+              <th>Production</th>
+              <th>Manager folders</th>
             </tr>
           </thead>
           <tbody>
             {list.length === 0 && (
               <tr>
-                <td colSpan={8} className="empty">No folders match. Widen the install window or clear the search.</td>
+                <td colSpan={6} className="empty">No jobs match. Widen the install window or clear the search.</td>
               </tr>
             )}
-            {list.map((f) => {
-              const open = params.open === String(f.id);
-              return (
-                <FolderRows key={f.id} f={f} open={open} today={today} toggle={href({ open: open ? undefined : String(f.id) })} />
-              );
-            })}
+            {list.map((j) => (
+              <JobRow key={j.jobtreadId} j={j} today={today} />
+            ))}
           </tbody>
         </table>
       </div>
 
       <footer>
-        {board.lastImport.rowCount} rows, {board.lastImport.jobCount} jobs, {board.lastImport.folderCount} folders in the latest paste. Today is{" "}
-        {shortDate(today)}. A folder&apos;s progress is its furthest step with a received date in Manager; job color counts once a color is entered.
+        {board.lastSync.jobCount} jobs from JobTread: every job with an active Status 2.0 stage or a Confirmed Install Date. Today is {shortDate(today)}. Folder
+        detail comes from the latest Manager paste when the job is in it.
       </footer>
     </>
   );
 }
 
-function matches(f: BoardFolder, q: string): boolean {
+function matches(j: BoardJob, q: string): boolean {
   if (!q) return true;
-  return [f.customer, f.jobNumber, f.designer, f.installer, f.description, f.room].join(" ").toLowerCase().includes(q);
+  return [j.customer, j.jobNumber, j.name, j.city].join(" ").toLowerCase().includes(q);
 }
 
-function FolderRows({ f, open, today, toggle }: { f: BoardFolder; open: boolean; today: string; toggle: string }) {
-  const byStep = new Map(f.steps.map((s) => [s.step, s]));
-  const passed = (s: number) => f.nextStep === null || s < f.nextStep;
+function JobRow({ j, today }: { j: BoardJob; today: string }) {
+  const mismatch = j.manager?.installOn && j.installOn && j.manager.installOn !== j.installOn;
+  const prodDone = j.production.filter((p) => p.on);
   return (
-    <>
-      <tr className="folder">
-        <td>
-          <div className="date">{shortDate(f.installOn)}</div>
-          <span className={`pill ${RISK_CLASS[f.risk]}`}>{riskText(f)}</span>
-        </td>
-        <td>
-          <span className="jobno">{f.jobNumber}</span>
-        </td>
-        <td>
-          <Link className="cust" href={toggle} scroll={false} aria-expanded={open}>{f.customer}</Link>
-          <div className="small">{f.description}</div>
-        </td>
-        <td>
-          {f.letter ? `Folder ${f.letter}` : "Folder"}
-          <div className="small">{[f.room, f.color].filter(Boolean).join(" · ")}</div>
-        </td>
-        <td>
-          <div className="track">
-            {PRODUCTION_STEPS.map((s) => {
-              const row = byStep.get(s);
-              const dated = Boolean(row?.doneOn);
-              const cls = dated ? "done" : passed(s) ? "done implied" : s === f.nextStep ? "next" : "";
-              const title = `${s} ${STEPS[s].name}${dated ? `, done ${md(row!.doneOn)} by ${row!.ref || "?"}` : passed(s) ? ", passed (no date in Manager)" : ", not done"}`;
-              return <span key={s} className={cls} title={title}>{s}</span>;
-            })}
-          </div>
-        </td>
-        <td>
-          {f.nextStep === null ? (
-            <span className="pill ok">Received by production</span>
-          ) : (
-            <>
-              <strong>{STEPS[f.nextStep].name}</strong>
-              <div className="small">{STEPS[f.nextStep].department}</div>
-            </>
-          )}
-        </td>
-        <td>
-          {f.lastStep && f.lastDoneOn ? (
-            <>
-              {STEPS[f.lastStep]?.name ?? `Step ${f.lastStep}`}
-              <div className="small">{f.lastRef || "?"} · {ago(today, f.lastDoneOn)}</div>
-            </>
-          ) : (
-            <span className="small">Nothing done yet</span>
-          )}
-        </td>
-        <td>
-          {f.designer}
-          <div className="small">{f.installer}</div>
-        </td>
-      </tr>
-      {open && (
-        <tr className="detail">
-          <td colSpan={8}>
-            <div className="small" style={{ marginBottom: 8 }}>
-              Contract {md(f.contractOn)} · Production due {md(f.dueOn)} · Install {md(f.installOn)} · Job {money(f.amountCents)}, balance{" "}
-              {money(f.balanceCents)}
-              {f.city ? ` · ${f.city}` : ""}
+    <tr className="folder">
+      <td>
+        <div className="date">{shortDate(j.installOn)}</div>
+        <span className={`pill ${RISK_CLASS[j.risk]}`}>{riskText(j)}</span>
+        {j.installOn && !j.installConfirmed && <div className="small">Not marked confirmed</div>}
+      </td>
+      <td>
+        <span className="jobno">{j.jobNumber}</span>
+      </td>
+      <td>
+        <strong>{j.customer || j.name}</strong>
+        <div className="small">{j.city}</div>
+      </td>
+      <td>
+        {j.stage ? (
+          <>
+            <strong>{j.stage}</strong>
+            <div className="small">{[stageInfo(j.stage)?.department, since(today, j.stageSince)].filter(Boolean).join(" · ")}</div>
+          </>
+        ) : (
+          <span className="small">Not set</span>
+        )}
+      </td>
+      <td>
+        {prodDone.length ? (
+          prodDone.map((p) => (
+            <div key={p.label} className="small">
+              {p.label} {md(p.on)}
             </div>
-            <ul className="steps">
-              {[10, ...PRODUCTION_STEPS].map((s) => {
-                const row = byStep.get(s);
-                const extra = row && (s === 9 || s === 10) && row.detail ? ` · ${row.detail}` : "";
-                return (
-                  <li key={s}>
-                    <span className="st">{s}</span>
-                    <span>
-                      {STEPS[s].name}:{" "}
-                      {row?.doneOn ? `${md(row.doneOn)} · ${row.ref || "?"}` : <span className="no">{s <= 9 && passed(s) ? "passed, no date" : "not done"}</span>}
-                      {extra}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-            {f.specialOrders.length > 0 && (
-              <div className="so">
-                <div className="label">Special orders on this job</div>
-                {f.specialOrders.map((o, i) => (
-                  <div key={i}>
-                    {o.item} · {o.vendor}
-                    {o.detail ? ` · ${o.detail}` : ""} ·{" "}
-                    {o.receivedOn ? `received ${md(o.receivedOn)}` : o.eta ? `ETA ${md(o.eta)}` : <strong>not received, no ETA</strong>}
-                  </div>
-                ))}
+          ))
+        ) : (
+          <span className="small">—</span>
+        )}
+        {j.materialsOrdered === false && <div className="small">Materials not all ordered</div>}
+      </td>
+      <td>
+        {j.manager ? (
+          <>
+            <Link href={`/folders?q=${encodeURIComponent(j.jobNumber)}&window=all&ready=1`}>
+              {j.manager.folders} folder{j.manager.folders === 1 ? "" : "s"}
+            </Link>
+            <div className="small">
+              {j.manager.waitingOnStep ? `Waiting on ${STEPS[j.manager.waitingOnStep].name.toLowerCase()}` : j.manager.folders ? "All received by production" : ""}
+            </div>
+            {mismatch && (
+              <div className="small" style={{ color: "var(--crit)", fontWeight: 600 }}>
+                Manager install date is {md(j.manager.installOn)}
               </div>
             )}
-          </td>
-        </tr>
-      )}
-    </>
+          </>
+        ) : (
+          <span className="small">Not in the last paste</span>
+        )}
+      </td>
+    </tr>
   );
 }

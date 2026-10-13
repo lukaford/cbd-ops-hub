@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Install Readiness Board",
-  description: "Every production folder by firm install date, built from the Manager Special Orders table.",
+  description: "Every sold job by firm install date, read from JobTread, with folder detail from the Manager Special Orders table.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -20,7 +20,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <nav className="nav">
           <span className="brand">CBD Ops Hub</span>
-          <Link href="/">Board</Link>
+          <Link href="/">Jobs</Link>
+          <Link href="/folders">Folders</Link>
           <Link href="/import">Paste Special Orders</Link>
         </nav>
         <main className="wrap">{children}</main>

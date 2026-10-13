@@ -75,3 +75,28 @@ export const specialOrders = pgTable("special_orders", {
   eta: date("eta", { mode: "string" }),
   receivedOn: date("received_on", { mode: "string" }),
 });
+
+// Read-only copy of JobTread, refreshed by replacing every row on each sync.
+export const jobtreadSyncs = pgTable("jobtread_syncs", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  jobCount: integer("job_count").notNull(),
+});
+
+export const jobtreadJobs = pgTable("jobtread_jobs", {
+  jobtreadId: text("jobtread_id").primaryKey(),
+  jobNumber: text("job_number").notNull(),
+  name: text("name").notNull().default(""),
+  customer: text("customer").notNull().default(""),
+  city: text("city").notNull().default(""),
+  stage: text("stage"),
+  stageSince: timestamp("stage_since", { withTimezone: true }),
+  installOn: date("install_on", { mode: "string" }),
+  installConfirmed: boolean("install_confirmed").notNull().default(false),
+  cncCutOn: date("cnc_cut_on", { mode: "string" }),
+  edgeBandingOn: date("edge_banding_on", { mode: "string" }),
+  drawerAssemblyOn: date("drawer_assembly_on", { mode: "string" }),
+  finalQaOn: date("final_qa_on", { mode: "string" }),
+  materialsOrdered: boolean("materials_ordered"),
+  syncId: integer("sync_id").notNull().references(() => jobtreadSyncs.id),
+});
