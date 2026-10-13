@@ -2,7 +2,9 @@
 
 One place for every department at our Closets by Design location to see where each job stands.
 
-The first piece is the **Install Readiness Board**. Front office pastes the Special Orders table from Closets by Design Manager, and the board shows every production folder by its firm install date, the step it is waiting on, and which folders install within 14 days but are not yet received by production.
+The first piece is the **Install Readiness Board**. It reads every sold job from JobTread (Status 2.0 and Confirmed Install Date) and shows which jobs install within 14 days but are not yet in production. The **Folders** page adds per-folder step detail from a pasted Closets by Design Manager Special Orders table.
+
+**The hub never changes anything in JobTread.** The JobTread client (`src/lib/jobtread/client.ts`) only sends read queries and refuses anything else before it leaves the app.
 
 ## Run it
 
@@ -11,9 +13,24 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000, choose **Paste Special Orders**, and paste the table copied from Manager.
+Open http://localhost:3000. To run it without a terminal, see [TESTING.md](TESTING.md).
 
-Without `DATABASE_URL`, data is kept in a built-in database under `.data/`. Set `DATABASE_URL` to a hosted Postgres connection string (Supabase or Neon) for a shared deployment. `SHOP_TIME_ZONE` sets the shop's time zone (default `America/New_York`).
+To read from JobTread, create a grant key in JobTread's API settings (ideally for a user with view-only access) and set it as `JOBTREAD_GRANT_KEY` in `.env.local` or the host's environment settings. Never commit it. The board refreshes from JobTread when it is more than 5 minutes old, or on **Refresh from JobTread**.
+
+For folder detail, choose **Paste Special Orders** and paste the table copied from Manager.
+
+Without `DATABASE_URL`, data is kept in a built-in database in `%LOCALAPPDATA%\CBD Ops Hub` on Windows or `~/.cbd-ops-hub` elsewhere (set `DATA_DIR` to change it). It is kept out of the app folder because OneDrive or iCloud syncing corrupts it, and if it is ever damaged the app sets it aside and starts fresh. Set `DATABASE_URL` to a hosted Postgres connection string (Supabase or Neon) for a shared deployment. `SHOP_TIME_ZONE` sets the shop's time zone (default `America/New_York`).
+
+## Accounts
+
+Open `/setup` once to make the admin account, then manage employee accounts and the categories that set their permissions from **Admin**, and clients from **Clients**. Staff sign in with email and password; clients get one-time sign-in links. Details and the full table layout: [docs/database.md](docs/database.md).
+
+## How JobTread is read
+
+- Jobs on the board: any job whose Status 2.0 is Sold through Ready for Install (Complete and Unsold stay off), plus any job with a Confirmed Install Date from a week ago onward.
+- "Not yet in production" means Status 2.0 is before Production, or not set.
+- "Since" on a stage is when Status 2.0 was last changed in JobTread.
+- When the Manager paste has a different install date for the same job number, the board flags it.
 
 ## How the paste is read
 
