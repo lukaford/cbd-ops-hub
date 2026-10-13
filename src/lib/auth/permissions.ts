@@ -75,6 +75,7 @@ const ROUTES: [prefix: string, anyOf: Permission[]][] = [
   ["/paperwork/templates/", ["pricebook.manage", "paperwork.write", "paperwork.review"]],
   ["/paperwork/templates", ["pricebook.manage"]],
   ["/paperwork", ["paperwork.write", "paperwork.review"]],
+  ["/catalog", ["pricebook.view", "pricebook.manage"]],
 ];
 
 export function permissionsForPath(pathname: string): Permission[] {

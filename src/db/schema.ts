@@ -304,3 +304,30 @@ export const auditEvents = pgTable(
   },
   (t) => [index("audit_events_at").on(t.at), index("audit_events_entity").on(t.entity, t.entityId)],
 );
+
+// Price book PDFs uploaded on the Catalog page, with every priced line pulled out
+// for searching. Company pricing, so stored in the database only.
+export const priceBooks = pgTable("price_books", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  revision: text("revision").notNull().default(""),
+  position: integer("position").notNull().default(0),
+  fileName: text("file_name").notNull(),
+  size: integer("size").notNull().default(0),
+  model: jsonb("model").notNull(),
+  archived: boolean("archived").notNull().default(false),
+  uploadedByUserId: integer("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// The book files, in pieces: the built-in database cannot hold one value over a few MB.
+export const priceBookChunks = pgTable(
+  "price_book_chunks",
+  {
+    id: serial("id").primaryKey(),
+    bookId: integer("book_id").notNull().references(() => priceBooks.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    data: bytea("data").notNull(),
+  },
+  (t) => [uniqueIndex("price_book_chunks_book_seq").on(t.bookId, t.seq)],
+);
