@@ -24,9 +24,9 @@ describe("local database setup", () => {
 
     let db = await openDb("");
     await db.execute(sql`insert into users (email, name, password_hash) values ('a@example.com', 'Al', 'x')`);
-    // The newest migration's tables are partly there but it isn't recorded, as on Luke's
-    // computer: one of its tables is missing and the record is gone.
-    await db.execute(sql`delete from drizzle.__drizzle_migrations where created_at = (select max(created_at) from drizzle.__drizzle_migrations)`);
+    // Migrations from accounts on are partly there but not recorded, as on Luke's
+    // computer: one of their tables is missing and the records are gone.
+    await db.execute(sql`delete from drizzle.__drizzle_migrations where created_at > 1791905445811`);
     await db.execute(sql`drop table notifications cascade`);
     await close(db);
 
