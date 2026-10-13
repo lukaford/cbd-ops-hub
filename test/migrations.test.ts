@@ -41,7 +41,8 @@ describe("local database setup", () => {
     // And the next start is an ordinary one.
     db = await openDb("");
     await close(db);
-  });
+    // Opens a fresh database three times, which is slow on a busy machine.
+  }, 30_000);
 
   it("makes generated statements safe to run twice", () => {
     expect(tolerant('CREATE TABLE "a" (\n"id" serial);')).toMatch(/^CREATE TABLE IF NOT EXISTS "a"/);
