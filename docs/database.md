@@ -70,7 +70,9 @@ erDiagram
 People whose categories see only their own work see a job when:
 
 1. their "name as written on jobs" matches the DESIGNER column of the Manager
-   paste or the designer on a paperwork packet,
+   paste, the designer on a paperwork packet, or the JobTread user who uploaded
+   the job's first photos (designers photograph every site at the appointment,
+   sold or not, so this is how their leads are found),
 2. an admin assigned the job to them (**`job_assignments`**), for leads and jobs
    their name isn't on yet,
 3. it's linked to one of their clients (`clients.assigned_user_id`), or
@@ -78,7 +80,9 @@ People whose categories see only their own work see a job when:
 
 That limit applies to the jobs board, schedule, reports, leads, folders,
 paperwork (list, packets, sheets, files) and clients. JobTread has no designer
-field today, so leads only show for a designer once one of 2 to 4 applies.
+field. In a sample of 18 jobs, the first photos' uploader matched Manager's
+designer on 16; the other two were uploaded by office accounts, which the
+Manager name still covers.
 
 ## Client sign-in
 

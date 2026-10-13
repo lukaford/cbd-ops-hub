@@ -2,7 +2,7 @@ import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from "no
 import { promisify } from "node:util";
 import { and, asc, count, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/db";
-import { auditEvents, authSessions, authTokens, clientJobs, clients, jobAssignments, jobs, paperworkPackets, staffCategories, userCategories, users } from "@/db/schema";
+import { auditEvents, authSessions, authTokens, clientJobs, clients, jobAssignments, jobs, jobtreadJobs, paperworkPackets, staffCategories, userCategories, users } from "@/db/schema";
 import { accessFrom, DEFAULT_CATEGORIES, isPermission, type Access, type JobScope } from "./permissions";
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number, opts: { N: number; r: number; p: number }) => Promise<Buffer>;
@@ -260,8 +260,8 @@ export async function assignedJobNumbers(db: Db, userId: number): Promise<string
   return rows.map((r) => r.n);
 }
 
-// A job is someone's own when their name is on it (Manager's DESIGNER column or
-// the paperwork's designer), it was assigned to them, it belongs to one of their
+// A job is someone's own when their name is on it (Manager's DESIGNER column,
+// the paperwork's designer, or they took its photos in JobTread), it was assigned to them, it belongs to one of their
 // clients, or they started paperwork for it.
 export async function ownJobNumbers(db: Db, user: StaffUser): Promise<Set<string>> {
   const names = user.jobNames.map((n) => n.trim().toLowerCase()).filter(Boolean);
@@ -271,8 +271,16 @@ export async function ownJobNumbers(db: Db, user: StaffUser): Promise<Set<string
         db.select({ n: paperworkPackets.jobNumber }).from(paperworkPackets).where(inArray(sql`lower(trim(${paperworkPackets.designer}))`, names)),
       ]
     : [];
+  const photographed = names.length
+    ? db
+        .select({ n: jobtreadJobs.jobNumber, by: jobtreadJobs.photographers })
+        .from(jobtreadJobs)
+        .where(sql`cardinality(${jobtreadJobs.photographers}) > 0`)
+        .then((rows) => rows.filter((r) => r.by.some((p) => names.includes(p.trim().toLowerCase()))))
+    : Promise.resolve([]);
   const lists = await Promise.all([
     ...byName,
+    photographed,
     db.select({ n: jobAssignments.jobNumber }).from(jobAssignments).where(eq(jobAssignments.userId, user.id)),
     db.select({ n: clientJobs.jobNumber }).from(clientJobs).innerJoin(clients, eq(clients.id, clientJobs.clientId)).where(eq(clients.assignedUserId, user.id)),
     db.select({ n: paperworkPackets.jobNumber }).from(paperworkPackets).where(eq(paperworkPackets.createdByUserId, user.id)),

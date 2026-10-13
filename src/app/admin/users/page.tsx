@@ -46,7 +46,7 @@ function StaffFields({ categories, user, memberOf = [], jobs = [] }: { categorie
         <label>
           <span className="label">Name as written on jobs</span>
           <input type="text" name="jobNames" defaultValue={user?.jobNames.join(", ")} placeholder="e.g. Sam D, Samantha" />
-          <span className="small">Jobs with this designer name count as theirs. Separate spellings with commas.</span>
+          <span className="small">Jobs with this designer name in Manager, or photos they uploaded in JobTread, count as theirs. Use their JobTread name; separate spellings with commas.</span>
         </label>
         <label>
           <span className="label">Extra jobs that are theirs</span>

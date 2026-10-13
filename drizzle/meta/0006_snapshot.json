@@ -1,5 +1,5 @@
 {
-  "id": "174515cc-c074-4730-801a-64dd6a25747d",
+  "id": "06ff04a3-c11a-4490-80e0-e04f5c1b1c71",
   "prevId": "940aff9d-3643-4f45-a385-123edfb0d25a",
   "version": "7",
   "dialect": "postgresql",
@@ -1314,6 +1314,13 @@
           "type": "date",
           "primaryKey": false,
           "notNull": false
+        },
+        "photographers": {
+          "name": "photographers",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
         },
         "sync_id": {
           "name": "sync_id",

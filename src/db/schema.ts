@@ -106,6 +106,9 @@ export const jobtreadJobs = pgTable("jobtread_jobs", {
   materialsOrdered: boolean("materials_ordered"),
   materials: text("materials").array().notNull().default([]),
   orderBy: date("order_by", { mode: "string" }),
+  // JobTread users who uploaded the job's first photos: the designer takes them
+  // at the appointment, sold or not, so this is how a designer's own leads are found.
+  photographers: text("photographers").array().notNull().default([]),
   syncId: integer("sync_id").notNull().references(() => jobtreadSyncs.id),
 });
 

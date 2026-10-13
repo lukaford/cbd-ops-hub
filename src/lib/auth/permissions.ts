@@ -42,7 +42,7 @@ export const JOB_SCOPES: { key: JobScope; label: string; help: string }[] = [
   {
     key: "own",
     label: "Only their own",
-    help: "Sees only jobs with their name on them, jobs assigned to them, their clients' jobs, and paperwork they started.",
+    help: "Sees only jobs with their name on them or their photos in JobTread, jobs assigned to them, their clients' jobs, and paperwork they started.",
   },
 ];
 

@@ -97,6 +97,7 @@ CREATE TABLE "users" (
 );
 --> statement-breakpoint
 ALTER TABLE "form_templates" ADD COLUMN "uploaded_by_user_id" integer;--> statement-breakpoint
+ALTER TABLE "jobtread_jobs" ADD COLUMN "photographers" text[] DEFAULT '{}' NOT NULL;--> statement-breakpoint
 ALTER TABLE "paperwork_issues" ADD COLUMN "created_by_user_id" integer;--> statement-breakpoint
 ALTER TABLE "paperwork_issues" ADD COLUMN "resolved_by_user_id" integer;--> statement-breakpoint
 ALTER TABLE "paperwork_packets" ADD COLUMN "created_by_user_id" integer;--> statement-breakpoint

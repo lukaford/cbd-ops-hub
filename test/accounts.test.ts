@@ -22,11 +22,16 @@ import {
   updateUser,
 } from "@/lib/auth/accounts";
 import { saveSnapshot } from "@/lib/import";
+import { saveJobTreadSync, type JobTreadJob } from "@/lib/jobtread/sync";
 import { parseSpecialOrders } from "@/lib/manager/parse";
 import { accessFrom, can, canOpen } from "@/lib/auth/permissions";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+const lead: JobTreadJob = {
+  jobtreadId: "x1", jobNumber: "", name: "", customer: "", city: "", stage: "Appt Set", stageSince: null, installOn: null, installFieldOn: null, apptOn: null,
+  createdAt: null, installConfirmed: false, cncCutOn: null, edgeBandingOn: null, drawerAssemblyOn: null, finalQaOn: null, materialsOrdered: null, materials: [], orderBy: null, photographers: [],
+};
 const fixture = readFileSync(path.join(__dirname, "fixtures", "special-orders.tsv"), "utf8");
 
 const owner = { name: "Luke Owner", email: "Owner@Example.com", password: "a-long-password" };
@@ -145,9 +150,13 @@ describe("categories and own work", () => {
     const { user } = await inviteUser(db, { email: "d@example.com", name: "Dee", role: "staff", categoryIds: [designer.id], jobNames: [` ${designerName.toUpperCase()} `] }, admin.id);
     await assignJobs(db, user.id, ["70001"], admin.id);
     await createClient(db, { name: "C", jobNumbers: ["70002"], assignedUserId: user.id }, admin.id);
+    await saveJobTreadSync(db, [{ ...lead, jobNumber: "70003", photographers: ["test designer", "Office"] }, { ...lead, jobtreadId: "x2", jobNumber: "70004", photographers: ["Office"] }]);
     const own = await ownJobNumbers(db, user);
     expect(own.has("70001")).toBe(true);
     expect(own.has("70002")).toBe(true);
+    // Leads count as theirs when they took the photos in JobTread.
+    expect(own.has("70003")).toBe(true);
+    expect(own.has("70004")).toBe(false);
     expect([...own].some((n) => n.startsWith("5000"))).toBe(true);
   });
 });
