@@ -28,6 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Link href="/schedule">Schedule</Link>
           <Link href="/reports">Reports</Link>
           <Link href="/unsold">Unsold</Link>
+          <Link href="/paperwork">Paperwork</Link>
           <Link href="/folders">Folders</Link>
           <Link href="/import">Paste Special Orders</Link>
           {signedIn && (
