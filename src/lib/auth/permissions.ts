@@ -3,7 +3,8 @@
 // Kept in code rather than the database so a policy change is a reviewed edit.
 
 export const DEPARTMENTS = [
-  { key: "sales", label: "Sales / Design" },
+  { key: "designer", label: "Designer (in-home sales)" },
+  { key: "sales", label: "Sales office" },
   { key: "front_office", label: "Front office" },
   { key: "engineering", label: "Engineering CAD" },
   { key: "purchasing", label: "Purchasing" },
@@ -29,17 +30,17 @@ export const PERMISSIONS = {
   "jobs.view": { label: "See the jobs board, folders and schedule", everyone: true },
   "reports.view": { label: "Run and download reports", everyone: true },
   "reports.save": { label: "Save shared report setups", departments: ["front_office"] },
-  "unsold.view": { label: "See unsold jobs and leads", departments: ["sales", "front_office"] },
+  "unsold.view": { label: "See unsold jobs and leads", departments: ["designer", "sales", "front_office"] },
   "manager.import": { label: "Paste the Manager Special Orders table", departments: ["front_office"] },
-  "paperwork.write": { label: "Fill in and submit sales paperwork", departments: ["sales"] },
+  "paperwork.write": { label: "Fill in and submit sales paperwork", departments: ["designer"] },
   "paperwork.review": { label: "Review submitted paperwork", departments: ["front_office", "engineering", "price_verification"] },
-  "pricebook.view": { label: "Look up the price book", departments: ["sales", "front_office", "purchasing", "price_verification"] },
+  "pricebook.view": { label: "Look up the price book", departments: ["designer", "sales", "front_office", "purchasing", "price_verification"] },
   "pricebook.manage": { label: "Upload price books and paperwork templates", departments: ["price_verification"] },
   "orders.manage": { label: "Track material and special orders", departments: ["purchasing"] },
   "qa.signoff": { label: "Sign off QA", departments: ["qa"] },
   "production.update": { label: "Update production steps", departments: ["production"] },
   "install.update": { label: "Update installs", departments: ["installation", "front_office"] },
-  "clients.manage": { label: "Add clients and send them sign-in links", departments: ["sales", "front_office"] },
+  "clients.manage": { label: "Add clients and send them sign-in links", departments: ["designer", "sales", "front_office"] },
   "users.manage": { label: "Add staff and change their access", adminOnly: true },
 } satisfies Record<string, Rule>;
 
