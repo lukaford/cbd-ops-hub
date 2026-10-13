@@ -11,13 +11,15 @@ import { parsePdfForm } from "@/lib/forms/pdfForm";
 import { labelFields, pdfTextItems } from "@/lib/forms/fieldLabels";
 import { templateInfo, PACKET_LABELS, SIGN_CONSENT } from "@/lib/forms/naming";
 import { addDoc, createPacket, loadPacket } from "@/lib/paperwork";
+import { currentStaff, inScope, visibleJobs } from "@/lib/auth/current";
 
 const str = (form: FormData, k: string) => String(form.get(k) ?? "").trim();
 
 async function packetOrThrow(id: number) {
   const db = await getDb();
   const [p] = await db.select().from(paperworkPackets).where(eq(paperworkPackets.id, id));
-  if (!p) throw new Error("Packet not found");
+  // People who see only their own work can only touch their own jobs' paperwork.
+  if (!p || !inScope(await visibleJobs(), p.jobNumber)) throw new Error("Packet not found");
   return { db, packet: p };
 }
 
@@ -60,6 +62,7 @@ export async function uploadTemplates(form: FormData): Promise<void> {
         .set({ archived: true })
         .where(and(eq(formTemplates.name, info.name), eq(formTemplates.kind, info.kind), eq(formTemplates.archived, false)));
       await db.insert(formTemplates).values({
+        uploadedByUserId: (await currentStaff())?.user.id ?? null,
         kind: info.kind,
         name: info.name,
         room: info.room,
@@ -107,7 +110,9 @@ export async function startPacket(form: FormData): Promise<void> {
   }
   if (!jobNumber || !customer) redirect("/paperwork?error=Pick+a+job+or+enter+a+job+number+and+customer");
   const copyFrom = Number(form.get("copyFrom")) || null;
-  const id = await createPacket(db, { jobtreadId: jobtreadId || null, jobNumber, customer, city, designer: str(form, "designer"), label, copyFrom });
+  const staff = await currentStaff();
+  const designer = str(form, "designer") || staff?.user.jobNames[0] || "";
+  const id = await createPacket(db, { jobtreadId: jobtreadId || null, jobNumber, customer, city, designer, label, copyFrom, createdByUserId: staff?.user.id ?? null });
   revalidatePath("/paperwork");
   redirect(`/paperwork/${id}`);
 }
@@ -135,6 +140,7 @@ export async function saveDocValues(docId: number, values: unknown, title?: stri
   const [doc] = await db.select().from(paperworkDocs).where(eq(paperworkDocs.id, docId));
   if (!doc) return { ok: false, error: "This sheet no longer exists." };
   const [p] = await db.select().from(paperworkPackets).where(eq(paperworkPackets.id, doc.packetId));
+  if (!p || !inScope(await visibleJobs(), p.jobNumber)) return { ok: false, error: "This sheet no longer exists." };
   if (p?.status !== "draft") return { ok: false, error: "This paperwork was submitted, so it can't be changed. Start a new version instead." };
   if (!values || typeof values !== "object") return { ok: false, error: "Nothing to save." };
   const now = new Date();
@@ -192,7 +198,7 @@ export async function addIssue(form: FormData): Promise<void> {
   const id = Number(form.get("packetId"));
   const { db } = await packetOrThrow(id);
   const text = str(form, "text").slice(0, 500);
-  if (text) await db.insert(paperworkIssues).values({ packetId: id, text, createdBy: str(form, "createdBy").slice(0, 60) });
+  if (text) await db.insert(paperworkIssues).values({ packetId: id, text, createdBy: str(form, "createdBy").slice(0, 60), createdByUserId: (await currentStaff())?.user.id ?? null });
   revalidatePath(`/paperwork/${id}`);
   redirect(`/paperwork/${id}#checks`);
 }
@@ -201,7 +207,9 @@ export async function resolveIssue(form: FormData): Promise<void> {
   const db = await getDb();
   const [i] = await db.select().from(paperworkIssues).where(eq(paperworkIssues.id, Number(form.get("id"))));
   if (!i) return;
-  await db.update(paperworkIssues).set({ resolvedAt: i.resolvedAt ? null : new Date() }).where(eq(paperworkIssues.id, i.id));
+  await packetOrThrow(i.packetId);
+  const resolvedByUserId = i.resolvedAt ? null : ((await currentStaff())?.user.id ?? null);
+  await db.update(paperworkIssues).set({ resolvedAt: i.resolvedAt ? null : new Date(), resolvedByUserId }).where(eq(paperworkIssues.id, i.id));
   revalidatePath(`/paperwork/${i.packetId}`);
   redirect(`/paperwork/${i.packetId}#checks`);
 }
@@ -210,7 +218,7 @@ export async function signPacket(form: FormData): Promise<{ ok: boolean; error?:
   const id = Number(form.get("packetId"));
   const db = await getDb();
   const lp = await loadPacket(db, id);
-  if (!lp) return { ok: false, error: "Paperwork not found." };
+  if (!lp || !inScope(await visibleJobs(), lp.packet.jobNumber)) return { ok: false, error: "Paperwork not found." };
   if (lp.packet.status !== "draft") return { ok: false, error: "This paperwork was already submitted." };
   const role = str(form, "role") === "designer" ? "designer" : "customer";
   const signerName = str(form, "name").slice(0, 100);
@@ -227,6 +235,8 @@ export async function signPacket(form: FormData): Promise<{ ok: boolean; error?:
     role,
     signerName,
     signerEmail: str(form, "email").slice(0, 120),
+    // A designer signs in their own name; the customer signs on the designer's device.
+    signerUserId: role === "designer" ? ((await currentStaff())?.user.id ?? null) : null,
     image,
     consent: SIGN_CONSENT,
     contentHash: lp.contentHash,

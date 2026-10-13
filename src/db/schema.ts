@@ -1,4 +1,5 @@
-import { boolean, customType, date, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, customType, date, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({ dataType: () => "bytea" });
 
@@ -105,6 +106,9 @@ export const jobtreadJobs = pgTable("jobtread_jobs", {
   materialsOrdered: boolean("materials_ordered"),
   materials: text("materials").array().notNull().default([]),
   orderBy: date("order_by", { mode: "string" }),
+  // JobTread users who uploaded the job's first photos: the designer takes them
+  // at the appointment, sold or not, so this is how a designer's own leads are found.
+  photographers: text("photographers").array().notNull().default([]),
   syncId: integer("sync_id").notNull().references(() => jobtreadSyncs.id),
 });
 
@@ -129,6 +133,7 @@ export const formTemplates = pgTable("form_templates", {
   file: bytea("file").notNull(),
   model: jsonb("model").notNull(),
   archived: boolean("archived").notNull().default(false),
+  uploadedByUserId: integer("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -145,6 +150,7 @@ export const paperworkPackets = pgTable("paperwork_packets", {
   label: text("label").notNull().default("Sale Paperwork"),
   notes: text("notes").notNull().default(""),
   status: text("status").notNull().default("draft"), // "draft" | "submitted"
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   submittedAt: timestamp("submitted_at", { withTimezone: true }),
 });
@@ -177,6 +183,9 @@ export const paperworkSignatures = pgTable("paperwork_signatures", {
   role: text("role").notNull(), // "customer" | "designer"
   signerName: text("signer_name").notNull(),
   signerEmail: text("signer_email").notNull().default(""),
+  // The signed-in account that signed, when there was one (staff, or a client on their own device).
+  signerUserId: integer("signer_user_id").references(() => users.id, { onDelete: "set null" }),
+  signerClientId: integer("signer_client_id").references(() => clients.id, { onDelete: "set null" }),
   image: text("image").notNull(), // PNG data URL of the drawn signature
   consent: text("consent").notNull(),
   contentHash: text("content_hash").notNull(),
@@ -191,6 +200,171 @@ export const paperworkIssues = pgTable("paperwork_issues", {
   packetId: integer("packet_id").notNull().references(() => paperworkPackets.id, { onDelete: "cascade" }),
   text: text("text").notNull(),
   createdBy: text("created_by").notNull().default(""),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  resolvedByUserId: integer("resolved_by_user_id").references(() => users.id, { onDelete: "set null" }),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---- Accounts ----------------------------------------------------------------
+// Staff sign in with email + password. Clients sign in with a one-time link, so
+// they never manage a password. What staff can do comes from the categories an
+// admin puts them in; each category is a set of permissions (the list lives in
+// src/lib/auth/permissions.ts) plus whether it sees every job or only its own.
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  // Stored lowercased; the sign-in name.
+  email: text("email").notNull().unique(),
+  name: text("name").notNull(),
+  // Initials as written in Manager's REF column, to tie step sign-offs to a person.
+  initials: text("initials").notNull().default(""),
+  // "admin" can do everything, including accounts and categories; "staff" gets what their categories give.
+  role: text("role").notNull().default("staff"),
+  // How this person's name is written on jobs (Manager's DESIGNER column), for "own jobs" access.
+  jobNames: text("job_names").array().notNull().default([]),
+  // Null until the person accepts their invite and picks a password.
+  passwordHash: text("password_hash"),
+  // Switched off instead of deleted, so their history keeps a name.
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
+});
+
+export const staffCategories = pgTable("staff_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description").notNull().default(""),
+  permissions: text("permissions").array().notNull().default([]),
+  // "all": every job. "own": only jobs that are theirs (see job_assignments).
+  jobScope: text("job_scope").notNull().default("all"),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userCategories = pgTable(
+  "user_categories",
+  {
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    categoryId: integer("category_id").notNull().references(() => staffCategories.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.categoryId] })],
+);
+
+// Jobs given to a person by hand, on top of the ones that are theirs automatically
+// (their name on the job, their clients' jobs, paperwork they started).
+export const jobAssignments = pgTable(
+  "job_assignments",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    jobNumber: text("job_number").notNull(),
+    createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("job_assignments_user_job").on(t.userId, t.jobNumber), index("job_assignments_job").on(t.jobNumber)],
+);
+
+export const clients = pgTable("clients", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  // Stored lowercased. Optional: a client can get a link by text instead.
+  email: text("email").unique(),
+  phone: text("phone").notNull().default(""),
+  // JobTread customer, when known (read-only reference).
+  jobtreadCustomerId: text("jobtread_customer_id"),
+  // The designer looking after this client; designers who see only their own work see only these.
+  assignedUserId: integer("assigned_user_id").references(() => users.id, { onDelete: "set null" }),
+  active: boolean("active").notNull().default(true),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
+});
+
+// Which jobs a client may see. By job number, because the JobTread copy and the
+// Manager paste are both rebuilt on every refresh.
+export const clientJobs = pgTable(
+  "client_jobs",
+  {
+    id: serial("id").primaryKey(),
+    clientId: integer("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    jobNumber: text("job_number").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("client_jobs_client_job").on(t.clientId, t.jobNumber), index("client_jobs_job").on(t.jobNumber)],
+);
+
+// One row per signed-in browser. Only a hash of the cookie is kept, and deleting
+// the row signs that browser out (switching a user off deletes all of theirs).
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: serial("id").primaryKey(),
+    tokenHash: text("token_hash").notNull().unique(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+    clientId: integer("client_id").references(() => clients.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    userAgent: text("user_agent").notNull().default(""),
+  },
+  (t) => [check("auth_sessions_one_owner", sql`(${t.userId} is null) <> (${t.clientId} is null)`)],
+);
+
+// One-time links: staff invites, password resets and client sign-in links.
+export const authTokens = pgTable(
+  "auth_tokens",
+  {
+    id: serial("id").primaryKey(),
+    tokenHash: text("token_hash").notNull().unique(),
+    // "staff_invite" | "password_reset" | "client_login"
+    purpose: text("purpose").notNull(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+    clientId: integer("client_id").references(() => clients.id, { onDelete: "cascade" }),
+    createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [check("auth_tokens_one_owner", sql`(${t.userId} is null) <> (${t.clientId} is null)`)],
+);
+
+// Who did what, for sign-ins, account changes and later signatures and approvals.
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: serial("id").primaryKey(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorClientId: integer("actor_client_id").references(() => clients.id, { onDelete: "set null" }),
+    // e.g. "sign_in", "sign_in_failed", "user_invited", "client_link_created"
+    action: text("action").notNull(),
+    entity: text("entity").notNull().default(""),
+    entityId: text("entity_id").notNull().default(""),
+    data: jsonb("data").notNull().default({}),
+    ip: text("ip").notNull().default(""),
+  },
+  (t) => [index("audit_events_at").on(t.at), index("audit_events_entity").on(t.entity, t.entityId)],
+);
+
+// In-app alerts: a bell in the menu shows unread ones.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    // e.g. "designer_needed"
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    link: text("link").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [index("notifications_user_unread").on(t.userId, t.readAt)],
+);
+
+// Jobs the front office has been asked to give a designer, so each job is asked about once.
+export const designerRequests = pgTable("designer_requests", {
+  jobNumber: text("job_number").primaryKey(),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
 });

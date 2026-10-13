@@ -21,6 +21,10 @@ For folder detail, choose **Paste Special Orders** and paste the table copied fr
 
 Without `DATABASE_URL`, data is kept in a built-in database in `%LOCALAPPDATA%\CBD Ops Hub` on Windows or `~/.cbd-ops-hub` elsewhere (set `DATA_DIR` to change it). It is kept out of the app folder because OneDrive or iCloud syncing corrupts it, and if it is ever damaged the app sets it aside and starts fresh. Set `DATABASE_URL` to a hosted Postgres connection string (Supabase or Neon) for a shared deployment. `SHOP_TIME_ZONE` sets the shop's time zone (default `America/New_York`).
 
+## Accounts
+
+Open `/setup` once to make the admin account, then manage employee accounts and the categories that set their permissions from **Admin**, and clients from **Clients**. Staff sign in with email and password; clients get one-time sign-in links. Details and the full table layout: [docs/database.md](docs/database.md).
+
 ## How JobTread is read
 
 - Jobs on the board: any job whose Status 2.0 is Sold through Ready for Install (Complete and Unsold stay off), plus any job with a Confirmed Install Date from a week ago onward.

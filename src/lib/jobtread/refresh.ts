@@ -2,6 +2,7 @@ import { desc } from "drizzle-orm";
 import type { Db } from "@/db";
 import { jobtreadSyncs } from "@/db/schema";
 import { paveClient } from "./client";
+import { askForMissingDesigners } from "../designers";
 import { fetchJobTreadJobs, saveJobTreadSync } from "./sync";
 
 // The board reloads itself every few minutes; each reload pulls from JobTread once the copy is this old.
@@ -21,8 +22,11 @@ export async function refreshFromJobTread(db: Db, force = false): Promise<{ sync
   }
   try {
     await saveJobTreadSync(db, await fetchJobTreadJobs(paveClient(key)));
-    return { synced: true };
   } catch (err) {
     return { synced: false, error: err instanceof Error ? err.message : String(err) };
   }
+  // Asking the front office about jobs with no designer never holds up the board.
+  await askForMissingDesigners(db).catch((err) => console.error("Designer alerts failed:", err));
+  return { synced: true };
 }
+

@@ -25,6 +25,7 @@ export const templateColumns = {
   fileName: formTemplates.fileName,
   model: formTemplates.model,
   archived: formTemplates.archived,
+  uploadedByUserId: formTemplates.uploadedByUserId,
   uploadedAt: formTemplates.uploadedAt,
 };
 
@@ -40,6 +41,7 @@ export interface NewPacket {
   designer?: string;
   label: string;
   copyFrom?: number | null;
+  createdByUserId?: number | null;
 }
 
 export async function createPacket(db: Db, p: NewPacket): Promise<number> {
@@ -61,6 +63,7 @@ export async function createPacket(db: Db, p: NewPacket): Promise<number> {
       label: p.label,
       version: (last?.version ?? 0) + 1,
       notes: source?.notes ?? "",
+      createdByUserId: p.createdByUserId ?? null,
     })
     .returning({ id: paperworkPackets.id });
 

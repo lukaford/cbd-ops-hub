@@ -131,3 +131,9 @@ export async function loadJobBoard(db: Db, today: string): Promise<JobBoard> {
     }),
   };
 }
+
+// Only the jobs and leads in `jobNumbers`, for people who see only their own work.
+export function limitBoard(board: JobBoard, jobNumbers: Set<string> | null): JobBoard {
+  if (!jobNumbers) return board;
+  return { ...board, jobs: board.jobs.filter((j) => jobNumbers.has(j.jobNumber)), leads: board.leads.filter((l) => jobNumbers.has(l.jobNumber)) };
+}

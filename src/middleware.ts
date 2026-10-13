@@ -1,17 +1,59 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getDb } from "@/db";
+import { accountForSession, ownJobNumbers } from "@/lib/auth/accounts";
+import { ACCOUNT_COOKIE, accountsEnabled } from "@/lib/auth/current";
+import { canOpen } from "@/lib/auth/permissions";
+import { jobNumberForPath } from "@/lib/auth/scope";
 import { SESSION_COOKIE, signInRequired, validSession } from "@/lib/session";
 
-export async function middleware(req: NextRequest) {
-  if (!signInRequired()) return NextResponse.next();
-  if (await validSession(req.cookies.get(SESSION_COOKIE)?.value)) return NextResponse.next();
+// Open to anyone: the sign-in pages and one-time links.
+const PUBLIC = ["/login", "/setup", "/invite/", "/portal/sign-in", "/portal/link/"];
+
+function redirectTo(req: NextRequest, pathname: string, keepNext = false) {
   const url = req.nextUrl.clone();
-  url.pathname = "/login";
+  url.pathname = pathname;
   url.search = "";
   const next = req.nextUrl.pathname + req.nextUrl.search;
-  if (next !== "/") url.searchParams.set("next", next);
+  if (keepNext && next !== "/") url.searchParams.set("next", next);
   return NextResponse.redirect(url);
 }
 
+export async function middleware(req: NextRequest) {
+  const path = req.nextUrl.pathname;
+  if (PUBLIC.some((p) => path === p || path.startsWith(p))) return NextResponse.next();
+
+  // Before the first account is made, keep the old behavior: open on your own
+  // computer, or the shared APP_PASSWORD on a hosted copy.
+  if (!(await accountsEnabled())) {
+    if (path.startsWith("/portal")) return redirectTo(req, "/portal/sign-in");
+    if (!signInRequired() || (await validSession(req.cookies.get(SESSION_COOKIE)?.value))) return NextResponse.next();
+    return redirectTo(req, "/login", true);
+  }
+
+  const db = await getDb();
+  const account = await accountForSession(db, req.cookies.get(ACCOUNT_COOKIE)?.value);
+  if (path === "/portal" || path.startsWith("/portal/")) {
+    return account?.kind === "client" ? NextResponse.next() : redirectTo(req, "/portal/sign-in");
+  }
+  if (account?.kind === "client") return redirectTo(req, "/portal");
+  if (!account) return redirectTo(req, "/login", true);
+  if (!canOpen(account.access, path)) return noAccess(req);
+  // People who see only their own work can't open someone else's packet by its address.
+  if (account.access.scope === "own") {
+    const job = await jobNumberForPath(db, path);
+    if (job !== undefined && (job === null || !(await ownJobNumbers(db, account.user)).has(job))) return noAccess(req);
+  }
+  return NextResponse.next();
+}
+
+function noAccess(req: NextRequest) {
+  const url = req.nextUrl.clone();
+  url.pathname = "/no-access";
+  return NextResponse.rewrite(url, { status: 403 });
+}
+
 export const config = {
-  matcher: ["/((?!login|_next/|favicon.ico).*)"],
+  // Sessions live in the database, so this runs on Node rather than the edge.
+  runtime: "nodejs",
+  matcher: ["/((?!_next/|favicon.ico|pdf-worker).*)"],
 };

@@ -43,6 +43,13 @@
       "when": 1791905445811,
       "tag": "0005_paperwork",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791909520822,
+      "tag": "0006_accounts",
+      "breakpoints": true
     }
   ]
 }
