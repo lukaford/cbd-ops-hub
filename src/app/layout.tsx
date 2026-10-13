@@ -25,6 +25,7 @@ const STAFF_LINKS = [
   { href: "/reports", label: "Reports" },
   { href: "/unsold", label: "Unsold" },
   { href: "/paperwork", label: "Paperwork" },
+  { href: "/catalog", label: "Price Book" },
   { href: "/folders", label: "Folders" },
   { href: "/import", label: "Paste Special Orders" },
   { href: "/clients", label: "Clients" },

@@ -238,6 +238,24 @@ select.pdfin { appearance: none; -webkit-appearance: none; }
 .nav .who { margin-left: auto; color: var(--muted); font-size: 13px; }
 .nav .who + form { margin-left: 0; }
 details.edit > summary { cursor: pointer; color: var(--accent); }
+
+/* Price book */
+.books { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.book { display: grid; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 8px; padding: 12px 14px; color: inherit; text-decoration: none; }
+.book:hover { border-color: var(--accent); }
+.book .t { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+.prices { display: flex; flex-wrap: wrap; gap: 4px; }
+.price { background: var(--accent-soft); color: var(--ink); border-radius: 4px; padding: 1px 6px; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; font-size: 13px; }
+table.items td { vertical-align: top; }
+.pagetabs { max-height: 92px; overflow-y: auto; }
+.pagetabs .tab { font-size: 12px; padding: 4px 10px; }
+.bookview { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; align-items: start; }
+@media (max-width: 1000px) { .bookview { grid-template-columns: 1fr; } }
+.pageview { display: grid; gap: 8px; }
+.pagecanvas { overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 6px; max-height: 80vh; }
+.pagecanvas canvas { display: block; }
+h3.label { margin: 6px 0 0; }
+.price .col { font-weight: 400; color: var(--muted); margin-right: 4px; font-size: 11px; }
 .permgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px 18px; }
 .permgrid fieldset { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 0; display: grid; gap: 4px; }
 .pastebox .permgrid .checks { display: grid; align-content: start; gap: 6px; }
