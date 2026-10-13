@@ -25,6 +25,7 @@ export const templateColumns = {
   fileName: formTemplates.fileName,
   model: formTemplates.model,
   archived: formTemplates.archived,
+  uploadedByUserId: formTemplates.uploadedByUserId,
   uploadedAt: formTemplates.uploadedAt,
 };
 
