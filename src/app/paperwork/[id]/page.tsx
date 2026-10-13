@@ -232,7 +232,7 @@ export default async function PacketPage({ params, searchParams }: { params: Pro
 
       <section className="panel" id="files">
         <h2>Grids and attachments</h2>
-        {sp.rejected && <p className="msg err">Not added (only photos, PNG, JPG or PDF up to 25 MB): {sp.rejected}</p>}
+        {sp.rejected && <p className="msg err">Not added (only photos, PNG, JPG or PDF up to 8 MB): {sp.rejected}</p>}
         <div className="files">
           {lp.files.map((f) => (
             <figure key={f.id}>
