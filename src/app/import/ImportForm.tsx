@@ -20,7 +20,7 @@ export function ImportForm() {
       </div>
       {state && (
         <div className={`notice${state.ok ? "" : " err"}`} role="status">
-          {state.message} {state.ok && <Link href="/">Open the board</Link>}
+          {state.message} {state.ok && <Link href="/folders">Open the folders board</Link>}
         </div>
       )}
     </form>

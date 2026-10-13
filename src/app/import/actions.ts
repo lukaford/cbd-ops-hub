@@ -17,6 +17,7 @@ export async function importPaste(_prev: ImportState, form: FormData): Promise<I
     }
     const s = await saveSnapshot(await getDb(), parsed);
     revalidatePath("/");
+    revalidatePath("/folders");
     const dropped = s.droppedJobCount ? ` ${s.droppedJobCount} jobs from the last paste are no longer listed and were taken off the board.` : "";
     return { ok: true, message: `Loaded ${s.rowCount} rows: ${s.jobCount} jobs, ${s.folderCount} folders.${dropped}` };
   } catch (err) {
