@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE, validSession } from "@/lib/session";
+import { signOut } from "./login/actions";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -7,7 +10,8 @@ export const metadata: Metadata = {
   description: "Every sold job by firm install date, read from JobTread, with folder detail from the Manager Special Orders table.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const signedIn = await validSession((await cookies()).get(SESSION_COOKIE)?.value);
   return (
     <html lang="en">
       <head>
@@ -23,6 +27,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/">Jobs</Link>
           <Link href="/folders">Folders</Link>
           <Link href="/import">Paste Special Orders</Link>
+          {signedIn && (
+            <form action={signOut}>
+              <button className="link" type="submit">Sign out</button>
+            </form>
+          )}
         </nav>
         <main className="wrap">{children}</main>
       </body>
