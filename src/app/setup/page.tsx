@@ -14,7 +14,7 @@ export default async function SetupPage() {
         <div>
           <div className="label">First-time setup</div>
           <h1>Create the admin account</h1>
-          <p>This becomes the owner account. From then on everyone signs in with their own email and password, and you invite staff from the Staff page.</p>
+          <p>This becomes the owner account. From then on everyone signs in with their own email and password, and you add employees and set up their categories on the Admin page.</p>
         </div>
       </header>
       <LoginForm

@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/db";
-import { accountForSession } from "@/lib/auth/accounts";
+import { accountForSession, ownJobNumbers } from "@/lib/auth/accounts";
 import { ACCOUNT_COOKIE, accountsEnabled } from "@/lib/auth/current";
 import { canOpen } from "@/lib/auth/permissions";
+import { jobNumberForPath } from "@/lib/auth/scope";
 import { SESSION_COOKIE, signInRequired, validSession } from "@/lib/session";
 
 // Open to anyone: the sign-in pages and one-time links.
@@ -29,18 +30,26 @@ export async function middleware(req: NextRequest) {
     return redirectTo(req, "/login", true);
   }
 
-  const account = await accountForSession(await getDb(), req.cookies.get(ACCOUNT_COOKIE)?.value);
+  const db = await getDb();
+  const account = await accountForSession(db, req.cookies.get(ACCOUNT_COOKIE)?.value);
   if (path === "/portal" || path.startsWith("/portal/")) {
     return account?.kind === "client" ? NextResponse.next() : redirectTo(req, "/portal/sign-in");
   }
   if (account?.kind === "client") return redirectTo(req, "/portal");
   if (!account) return redirectTo(req, "/login", true);
-  if (!canOpen(account.user, path)) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/no-access";
-    return NextResponse.rewrite(url, { status: 403 });
+  if (!canOpen(account.access, path)) return noAccess(req);
+  // People who see only their own work can't open someone else's packet by its address.
+  if (account.access.scope === "own") {
+    const job = await jobNumberForPath(db, path);
+    if (job !== undefined && (job === null || !(await ownJobNumbers(db, account.user)).has(job))) return noAccess(req);
   }
   return NextResponse.next();
+}
+
+function noAccess(req: NextRequest) {
+  const url = req.nextUrl.clone();
+  url.pathname = "/no-access";
+  return NextResponse.rewrite(url, { status: 403 });
 }
 
 export const config = {

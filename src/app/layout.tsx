@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { accountsEnabled, currentAccount } from "@/lib/auth/current";
-import { can, canOpen } from "@/lib/auth/permissions";
+import { canOpen } from "@/lib/auth/permissions";
 import { SESSION_COOKIE, validSession } from "@/lib/session";
 import { signOut } from "./login/actions";
 import "./globals.css";
@@ -21,7 +21,7 @@ const STAFF_LINKS = [
   { href: "/folders", label: "Folders" },
   { href: "/import", label: "Paste Special Orders" },
   { href: "/clients", label: "Clients" },
-  { href: "/admin/users", label: "Staff" },
+  { href: "/admin", label: "Admin" },
 ];
 
 async function Nav() {
@@ -53,13 +53,13 @@ async function Nav() {
     );
   }
   if (!account) return null;
-  const user = account.user;
+  const { user, access } = account;
   return (
     <>
-      {STAFF_LINKS.filter((l) => canOpen(user, l.href)).map((l) => (
+      {STAFF_LINKS.filter((l) => canOpen(access, l.href)).map((l) => (
         <Link key={l.href} href={l.href}>{l.label}</Link>
       ))}
-      <span className="who">{user.name}{can(user, "users.manage") ? " · admin" : ""}</span>
+      <span className="who">{user.name}{access.admin ? " · admin" : ""}</span>
       {signOutButton}
     </>
   );

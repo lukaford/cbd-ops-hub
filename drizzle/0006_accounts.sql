@@ -49,11 +49,37 @@ CREATE TABLE "clients" (
 	"email" text,
 	"phone" text DEFAULT '' NOT NULL,
 	"jobtread_customer_id" text,
+	"assigned_user_id" integer,
 	"active" boolean DEFAULT true NOT NULL,
 	"created_by_user_id" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"last_sign_in_at" timestamp with time zone,
 	CONSTRAINT "clients_email_unique" UNIQUE("email")
+);
+--> statement-breakpoint
+CREATE TABLE "job_assignments" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"job_number" text NOT NULL,
+	"created_by_user_id" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "staff_categories" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"description" text DEFAULT '' NOT NULL,
+	"permissions" text[] DEFAULT '{}' NOT NULL,
+	"job_scope" text DEFAULT 'all' NOT NULL,
+	"position" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "staff_categories_name_unique" UNIQUE("name")
+);
+--> statement-breakpoint
+CREATE TABLE "user_categories" (
+	"user_id" integer NOT NULL,
+	"category_id" integer NOT NULL,
+	CONSTRAINT "user_categories_user_id_category_id_pk" PRIMARY KEY("user_id","category_id")
 );
 --> statement-breakpoint
 CREATE TABLE "users" (
@@ -62,7 +88,7 @@ CREATE TABLE "users" (
 	"name" text NOT NULL,
 	"initials" text DEFAULT '' NOT NULL,
 	"role" text DEFAULT 'staff' NOT NULL,
-	"departments" text[] DEFAULT '{}' NOT NULL,
+	"job_names" text[] DEFAULT '{}' NOT NULL,
 	"password_hash" text,
 	"active" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -84,11 +110,18 @@ ALTER TABLE "auth_tokens" ADD CONSTRAINT "auth_tokens_user_id_users_id_fk" FOREI
 ALTER TABLE "auth_tokens" ADD CONSTRAINT "auth_tokens_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "auth_tokens" ADD CONSTRAINT "auth_tokens_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "client_jobs" ADD CONSTRAINT "client_jobs_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "clients" ADD CONSTRAINT "clients_assigned_user_id_users_id_fk" FOREIGN KEY ("assigned_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "clients" ADD CONSTRAINT "clients_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "job_assignments" ADD CONSTRAINT "job_assignments_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "job_assignments" ADD CONSTRAINT "job_assignments_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_categories" ADD CONSTRAINT "user_categories_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_categories" ADD CONSTRAINT "user_categories_category_id_staff_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."staff_categories"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "audit_events_at" ON "audit_events" USING btree ("at");--> statement-breakpoint
 CREATE INDEX "audit_events_entity" ON "audit_events" USING btree ("entity","entity_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "client_jobs_client_job" ON "client_jobs" USING btree ("client_id","job_number");--> statement-breakpoint
 CREATE INDEX "client_jobs_job" ON "client_jobs" USING btree ("job_number");--> statement-breakpoint
+CREATE UNIQUE INDEX "job_assignments_user_job" ON "job_assignments" USING btree ("user_id","job_number");--> statement-breakpoint
+CREATE INDEX "job_assignments_job" ON "job_assignments" USING btree ("job_number");--> statement-breakpoint
 ALTER TABLE "form_templates" ADD CONSTRAINT "form_templates_uploaded_by_user_id_users_id_fk" FOREIGN KEY ("uploaded_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "paperwork_issues" ADD CONSTRAINT "paperwork_issues_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "paperwork_issues" ADD CONSTRAINT "paperwork_issues_resolved_by_user_id_users_id_fk" FOREIGN KEY ("resolved_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint

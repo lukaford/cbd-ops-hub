@@ -1,81 +1,84 @@
-// Who may do what. Admins and managers can do everything (only admins manage
-// accounts); staff get the shared basics plus what their departments need.
-// Kept in code rather than the database so a policy change is a reviewed edit.
+// Every action the app checks. Admins build categories (Designer, Front office,
+// Production…) out of these on the admin dashboard and put people in them; a
+// person can do anything any of their categories allows. Adding a permission
+// here is a code change, because the app has to check it somewhere.
 
-export const DEPARTMENTS = [
-  { key: "designer", label: "Designer (in-home sales)" },
-  { key: "sales", label: "Sales office" },
-  { key: "front_office", label: "Front office" },
-  { key: "engineering", label: "Engineering CAD" },
-  { key: "purchasing", label: "Purchasing" },
-  { key: "price_verification", label: "Price verification" },
-  { key: "qa", label: "QA" },
-  { key: "production", label: "Production" },
-  { key: "installation", label: "Installation" },
-] as const;
+export const PERMISSION_AREAS = ["Jobs", "Sales", "Paperwork", "Operations", "Clients", "Admin"] as const;
 
-export type Department = (typeof DEPARTMENTS)[number]["key"];
-
-export const ROLES = [
-  { key: "admin", label: "Admin", help: "Everything, including staff accounts." },
-  { key: "manager", label: "Manager", help: "Everything except staff accounts." },
-  { key: "staff", label: "Staff", help: "The shared views plus their departments' work." },
-] as const;
-
-export type Role = (typeof ROLES)[number]["key"];
-
-type Rule = { label: string; everyone?: true; departments?: Department[]; adminOnly?: true };
+type Rule = { area: (typeof PERMISSION_AREAS)[number]; label: string };
 
 export const PERMISSIONS = {
-  "jobs.view": { label: "See the jobs board, folders and schedule", everyone: true },
-  "reports.view": { label: "Run and download reports", everyone: true },
-  "reports.save": { label: "Save shared report setups", departments: ["front_office"] },
-  "unsold.view": { label: "See unsold jobs and leads", departments: ["designer", "sales", "front_office"] },
-  "manager.import": { label: "Paste the Manager Special Orders table", departments: ["front_office"] },
-  "paperwork.write": { label: "Fill in and submit sales paperwork", departments: ["designer"] },
-  "paperwork.review": { label: "Review submitted paperwork", departments: ["front_office", "engineering", "price_verification"] },
-  "pricebook.view": { label: "Look up the price book", departments: ["designer", "sales", "front_office", "purchasing", "price_verification"] },
-  "pricebook.manage": { label: "Upload price books and paperwork templates", departments: ["price_verification"] },
-  "orders.manage": { label: "Track material and special orders", departments: ["purchasing"] },
-  "qa.signoff": { label: "Sign off QA", departments: ["qa"] },
-  "production.update": { label: "Update production steps", departments: ["production"] },
-  "install.update": { label: "Update installs", departments: ["installation", "front_office"] },
-  "clients.manage": { label: "Add clients and send them sign-in links", departments: ["designer", "sales", "front_office"] },
-  "users.manage": { label: "Add staff and change their access", adminOnly: true },
+  "jobs.view": { area: "Jobs", label: "See the jobs board and schedule" },
+  "folders.view": { area: "Jobs", label: "See folder steps from the Manager paste" },
+  "reports.view": { area: "Jobs", label: "Run reports and download them" },
+  "reports.save": { area: "Jobs", label: "Save report setups for everyone" },
+  "manager.import": { area: "Jobs", label: "Paste the Manager Special Orders table" },
+  "unsold.view": { area: "Sales", label: "See leads and unsold jobs" },
+  "pricebook.view": { area: "Sales", label: "Look up the price book" },
+  "paperwork.write": { area: "Paperwork", label: "Start, fill in and submit paperwork" },
+  "paperwork.review": { area: "Paperwork", label: "Open and review submitted paperwork" },
+  "pricebook.manage": { area: "Paperwork", label: "Upload paperwork templates and price books" },
+  "orders.manage": { area: "Operations", label: "Track material and special orders" },
+  "production.update": { area: "Operations", label: "Update production steps" },
+  "qa.signoff": { area: "Operations", label: "Sign off QA" },
+  "install.update": { area: "Operations", label: "Update installs" },
+  "clients.view": { area: "Clients", label: "See clients" },
+  "clients.manage": { area: "Clients", label: "Add clients and send them sign-in links" },
+  "users.manage": { area: "Admin", label: "Manage accounts and categories" },
+  "audit.view": { area: "Admin", label: "See the activity log" },
 } satisfies Record<string, Rule>;
 
 export type Permission = keyof typeof PERMISSIONS;
+export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
 
-export type StaffAccess = { role: string; departments: readonly string[] };
-
-export function can(user: StaffAccess | null | undefined, permission: Permission): boolean {
-  if (!user) return false;
-  const rule: Rule = PERMISSIONS[permission];
-  if (user.role === "admin") return true;
-  if (rule.adminOnly) return false;
-  if (user.role === "manager" || rule.everyone) return true;
-  return (rule.departments ?? []).some((d) => user.departments.includes(d));
+export function isPermission(value: string): value is Permission {
+  return value in PERMISSIONS;
 }
 
-export function isRole(value: string): value is Role {
-  return ROLES.some((r) => r.key === value);
+export type JobScope = "all" | "own";
+
+export const JOB_SCOPES: { key: JobScope; label: string; help: string }[] = [
+  { key: "all", label: "Every job", help: "Sees all jobs, leads, paperwork and clients." },
+  {
+    key: "own",
+    label: "Only their own",
+    help: "Sees only jobs with their name on them, jobs assigned to them, their clients' jobs, and paperwork they started.",
+  },
+];
+
+// What a signed-in staff member may do, worked out from their categories.
+export interface Access {
+  admin: boolean;
+  permissions: ReadonlySet<string>;
+  // "own" only when none of their categories sees every job.
+  scope: JobScope;
 }
 
-export function isDepartment(value: string): value is Department {
-  return DEPARTMENTS.some((d) => d.key === value);
+export function accessFrom(role: string, categories: { permissions: readonly string[]; jobScope: string }[]): Access {
+  if (role === "admin") return { admin: true, permissions: new Set(ALL_PERMISSIONS), scope: "all" };
+  const permissions = new Set(categories.flatMap((c) => c.permissions));
+  const scope: JobScope = categories.length && categories.every((c) => c.jobScope === "own") ? "own" : "all";
+  return { admin: false, permissions, scope };
+}
+
+export function can(access: Access | null | undefined, permission: Permission): boolean {
+  return Boolean(access && (access.admin || access.permissions.has(permission)));
 }
 
 // What a staff page needs (any one of the listed permissions); anything not listed needs "jobs.view".
 const ROUTES: [prefix: string, anyOf: Permission[]][] = [
+  ["/admin/activity", ["audit.view"]],
   ["/admin", ["users.manage"]],
-  ["/clients", ["clients.manage"]],
+  ["/clients", ["clients.view", "clients.manage"]],
   ["/import", ["manager.import"]],
   ["/unsold", ["unsold.view"]],
   ["/reports", ["reports.view"]],
+  ["/folders", ["folders.view"]],
   // The editors load blank forms from here, so whoever fills paperwork can read them.
   ["/paperwork/templates/", ["pricebook.manage", "paperwork.write", "paperwork.review"]],
   ["/paperwork/templates", ["pricebook.manage"]],
   ["/paperwork", ["paperwork.write", "paperwork.review"]],
+  ["/no-access", []],
 ];
 
 export function permissionsForPath(pathname: string): Permission[] {
@@ -85,6 +88,59 @@ export function permissionsForPath(pathname: string): Permission[] {
   return ["jobs.view"];
 }
 
-export function canOpen(user: StaffAccess | null | undefined, pathname: string): boolean {
-  return permissionsForPath(pathname).some((p) => can(user, p));
+export function canOpen(access: Access | null | undefined, pathname: string): boolean {
+  const anyOf = permissionsForPath(pathname);
+  return anyOf.length === 0 || anyOf.some((p) => can(access, p));
 }
+
+// Starting categories, made along with the first admin account. Admins can
+// rename, change or delete them and add more.
+export const DEFAULT_CATEGORIES: { name: string; description: string; jobScope: JobScope; permissions: Permission[] }[] = [
+  {
+    name: "Manager",
+    description: "Sees and does everything except accounts.",
+    jobScope: "all",
+    permissions: ALL_PERMISSIONS.filter((p) => p !== "users.manage"),
+  },
+  {
+    name: "Designer",
+    description: "In-home sales: their own leads, jobs, paperwork and clients.",
+    jobScope: "own",
+    permissions: ["jobs.view", "unsold.view", "pricebook.view", "paperwork.write", "clients.view", "clients.manage"],
+  },
+  {
+    name: "Sales office",
+    description: "Leads, clients and the price book for every job.",
+    jobScope: "all",
+    permissions: ["jobs.view", "reports.view", "unsold.view", "pricebook.view", "clients.view", "clients.manage"],
+  },
+  {
+    name: "Front office",
+    description: "Manager pastes, scheduling, paperwork review and clients.",
+    jobScope: "all",
+    permissions: [
+      "jobs.view",
+      "folders.view",
+      "reports.view",
+      "reports.save",
+      "manager.import",
+      "unsold.view",
+      "pricebook.view",
+      "paperwork.review",
+      "install.update",
+      "clients.view",
+      "clients.manage",
+    ],
+  },
+  { name: "Engineering CAD", description: "", jobScope: "all", permissions: ["jobs.view", "folders.view", "reports.view", "paperwork.review"] },
+  { name: "Purchasing", description: "", jobScope: "all", permissions: ["jobs.view", "folders.view", "reports.view", "pricebook.view", "orders.manage"] },
+  {
+    name: "Price verification",
+    description: "",
+    jobScope: "all",
+    permissions: ["jobs.view", "folders.view", "reports.view", "pricebook.view", "paperwork.review", "pricebook.manage"],
+  },
+  { name: "QA", description: "", jobScope: "all", permissions: ["jobs.view", "folders.view", "reports.view", "qa.signoff"] },
+  { name: "Production", description: "", jobScope: "all", permissions: ["jobs.view", "folders.view", "reports.view", "production.update"] },
+  { name: "Installation", description: "", jobScope: "all", permissions: ["jobs.view", "folders.view", "reports.view", "install.update"] },
+];

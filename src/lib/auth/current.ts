@@ -2,8 +2,8 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
-import { accountForSession, countUsers, type Account, type StaffUser } from "./accounts";
-import { can, type Permission } from "./permissions";
+import { accountForSession, countUsers, ownJobNumbers, type Account, type StaffUser } from "./accounts";
+import { can, type Access, type Permission } from "./permissions";
 
 export const ACCOUNT_COOKIE = "hub_account";
 
@@ -18,19 +18,34 @@ export const currentAccount = cache(async (): Promise<Account | null> => {
   return accountForSession(await getDb(), (await cookies()).get(ACCOUNT_COOKIE)?.value);
 });
 
-export async function currentStaff(): Promise<StaffUser | null> {
+export type Staff = { user: StaffUser; access: Access };
+
+export async function currentStaff(): Promise<Staff | null> {
   const account = await currentAccount();
-  return account?.kind === "staff" ? account.user : null;
+  return account?.kind === "staff" ? { user: account.user, access: account.access } : null;
+}
+
+// Job numbers the signed-in person may see, or null for every job (also before
+// accounts are turned on).
+export const visibleJobs = cache(async (): Promise<Set<string> | null> => {
+  if (!(await accountsEnabled())) return null;
+  const staff = await currentStaff();
+  if (!staff) return new Set();
+  return staff.access.scope === "all" ? null : ownJobNumbers(await getDb(), staff.user);
+});
+
+export function inScope(scope: Set<string> | null, jobNumber: string): boolean {
+  return scope === null || scope.has(jobNumber);
 }
 
 // For server actions and routes: the page gate already ran, but actions can be
 // called directly, so they check again. Before any account exists everyone passes.
-export async function requireStaff(permission: Permission): Promise<StaffUser | null> {
+export async function requireStaff(permission: Permission): Promise<Staff | null> {
   if (!(await accountsEnabled())) return null;
-  const user = await currentStaff();
-  if (!user) redirect("/login");
-  if (!can(user, permission)) throw new Error("You don't have access to do that.");
-  return user;
+  const staff = await currentStaff();
+  if (!staff) redirect("/login");
+  if (!can(staff.access, permission)) throw new Error("You don't have access to do that.");
+  return staff;
 }
 
 export async function requestMeta() {

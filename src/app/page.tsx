@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getDb } from "@/db";
 import { todayIn } from "@/lib/board";
-import { isJobAtRisk, loadJobBoard, type BoardJob } from "@/lib/jobBoard";
+import { visibleJobs } from "@/lib/auth/current";
+import { isJobAtRisk, limitBoard, loadJobBoard, type BoardJob } from "@/lib/jobBoard";
 import { SORTS, sortJobs, type SortKey } from "@/lib/jobFilters";
 import { MATERIALS, materialLabel, STAGES, stageInfo } from "@/lib/jobtread/fields";
 import { jobTreadConfigured, refreshFromJobTread } from "@/lib/jobtread/refresh";
@@ -61,7 +62,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const db = await getDb();
   const today = todayIn(TIME_ZONE);
   const refresh = await refreshFromJobTread(db);
-  const board = await loadJobBoard(db, today);
+  const board = limitBoard(await loadJobBoard(db, today), await visibleJobs());
 
   if (!board.lastSync) {
     return (
