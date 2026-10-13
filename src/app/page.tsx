@@ -256,7 +256,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       </div>
 
       <footer>
-        {board.lastSync.jobCount} jobs from JobTread: every job whose Status 2.0 is Sold through Complete. Install dates come from the job name (the Confirmed Install Date field if the name has none). Past means installed or marked Complete. The board reloads by itself every few minutes. Today is {shortDate(today)}. Folder
+        {board.jobs.length} jobs from JobTread: every job whose Status 2.0 is Sold through Complete. Install dates come from the job name (the Confirmed Install Date field if the name has none). Past means installed or marked Complete. The board reloads by itself every few minutes. Today is {shortDate(today)}. Folder
         detail comes from the latest Manager paste when the job is in it.
       </footer>
     </>

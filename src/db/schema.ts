@@ -93,6 +93,8 @@ export const jobtreadJobs = pgTable("jobtread_jobs", {
   stageSince: timestamp("stage_since", { withTimezone: true }),
   installOn: date("install_on", { mode: "string" }),
   installFieldOn: date("install_field_on", { mode: "string" }),
+  apptOn: date("appt_on", { mode: "string" }),
+  createdAt: timestamp("created_at", { withTimezone: true }),
   installConfirmed: boolean("install_confirmed").notNull().default(false),
   cncCutOn: date("cnc_cut_on", { mode: "string" }),
   edgeBandingOn: date("edge_banding_on", { mode: "string" }),

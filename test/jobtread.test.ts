@@ -43,7 +43,7 @@ const JOBS = [
   {
     id: "jt5",
     number: "50006",
-    name: "50006 Lead",
+    name: "50006 Lead 10/2/26",
     location: { city: "Otherton", account: { name: "Lead, Al" } },
     customFieldValues: { nodes: [value(FIELD.status2, "Unsold"), value(FIELD.materials, "Lighting – 4 weeks")] },
   },
@@ -56,7 +56,7 @@ function fakePave(): { pave: Pave; sent: PaveQuery[] } {
     sent.push(q);
     if (q.currentGrant) return { currentGrant: { organization: { id: "org1" } } };
     if (q.customField) {
-      const ids = { [FIELD.status2]: ["jt1", "jt2", "jt4"], [FIELD.installOn]: ["jt1", "jt2", "jt3", "jt4"], [FIELD.materials]: ["jt3", "jt4", "jt5"] }[q.customField.$.id as string]!;
+      const ids = { [FIELD.status2]: ["jt1", "jt2", "jt4", "jt5"], [FIELD.installOn]: ["jt1", "jt2", "jt3", "jt4"], [FIELD.materials]: ["jt3", "jt4", "jt5"] }[q.customField.$.id as string]!;
       return { customField: { customFieldValues: { nextPage: null, nodes: ids.map((id) => ({ job: { id } })) } } };
     }
     const wanted: string[] = q.organization.jobs.$.where[2];
@@ -99,8 +99,11 @@ describe("JobTread sync", () => {
       ["50001", "Purchasing", "2026-10-21"],
       ["50003", "Production", "2026-10-15"],
       ["50005", "Complete", "2026-10-01"],
+      ["50006", "Unsold", null],
     ]);
-    // 50004 has no Status 2.0 and 50006 is Unsold, so neither is on the board.
+    // An unsold job's name carries its appointment date, not an install date.
+    expect(jobs[3].apptOn).toBe("2026-10-02");
+    // 50004 has no Status 2.0, so it is left out.
     expect(jobs[2].materials).toEqual(["Countertops - 4 weeks"]);
     expect(jobs[0]).toMatchObject({ customer: "Sample, Pat", installConfirmed: true, stageSince: new Date("2026-10-10T14:00:00Z") });
 
@@ -108,7 +111,8 @@ describe("JobTread sync", () => {
     await saveSnapshot(db, parseSpecialOrders(readFileSync(path.join(__dirname, "fixtures", "special-orders.tsv"), "utf8")));
     await saveJobTreadSync(db, jobs);
     const board = await loadJobBoard(db, "2026-10-12");
-    expect(board.lastSync?.jobCount).toBe(3);
+    expect(board.lastSync?.jobCount).toBe(4);
+    expect(board.leads.map((l) => [l.jobNumber, l.stage, l.apptOn])).toEqual([["50006", "Unsold", "2026-10-02"]]);
     expect(board.jobs.map((j) => [j.jobNumber, j.risk, j.past])).toEqual([
       ["50005", "in-production", true],
       ["50003", "in-production", false],

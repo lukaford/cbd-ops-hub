@@ -40,6 +40,9 @@ export const STAGES: Stage[] = [
 export const ACTIVE_STAGES = STAGES.map((s) => s.name);
 export const COMPLETE = "Complete";
 
+// Status 2.0 values before a sale. Their job names carry the appointment date.
+export const LEAD_STAGES = ["New Lead", "Appt Set", "Unsold"];
+
 // Material Type options, in JobTread's order. Tabs show the name without the lead time.
 export const MATERIALS = [
   "Special Order Accessories",

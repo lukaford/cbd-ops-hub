@@ -5,7 +5,7 @@ import { paveClient } from "./client";
 import { fetchJobTreadJobs, saveJobTreadSync } from "./sync";
 
 // The board reloads itself every few minutes; each reload pulls from JobTread once the copy is this old.
-export const SYNC_MAX_AGE_MS = 2 * 60 * 1000;
+export const SYNC_MAX_AGE_MS = 4 * 60 * 1000;
 
 export function jobTreadConfigured(): boolean {
   return Boolean(process.env.JOBTREAD_GRANT_KEY);
