@@ -38,6 +38,7 @@ export async function uploadTemplates(form: FormData): Promise<void> {
     const bytes = new Uint8Array(await entry.arrayBuffer());
     const info = templateInfo(entry.name);
     try {
+      if (bytes.length > MAX_FILE) throw new Error("file is over 8 MB");
       let model: unknown;
       let revision = "";
       if (/\.xlsx$/i.test(entry.name)) {
@@ -156,6 +157,8 @@ export async function saveNotes(form: FormData): Promise<void> {
 }
 
 const FILE_TYPES = ["image/png", "image/jpeg", "application/pdf"];
+// The built-in database cannot store a single value much over 8 MB; phone photos are well under.
+const MAX_FILE = 8 * 1024 * 1024;
 
 export async function uploadFiles(form: FormData): Promise<void> {
   const id = Number(form.get("packetId"));
@@ -165,7 +168,7 @@ export async function uploadFiles(form: FormData): Promise<void> {
   for (const entry of form.getAll("files")) {
     if (!(entry instanceof File) || !entry.size) continue;
     const type = entry.type === "image/jpg" ? "image/jpeg" : entry.type;
-    if (!FILE_TYPES.includes(type) || entry.size > 25 * 1024 * 1024) {
+    if (!FILE_TYPES.includes(type) || entry.size > MAX_FILE) {
       rejected.push(entry.name);
       continue;
     }
