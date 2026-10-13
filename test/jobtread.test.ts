@@ -15,7 +15,7 @@ const JOBS = [
   {
     id: "jt1",
     number: "50001",
-    name: "50001 Sample",
+    name: "50001 Sample 10/21/26",
     location: { city: "Testville", account: { name: "Sample, Pat" } },
     customFieldValues: { nodes: [value(FIELD.status2, "Purchasing"), value(FIELD.installOn, "2026-10-20"), value(FIELD.installConfirmed, true)] },
   },
@@ -96,25 +96,26 @@ describe("JobTread sync", () => {
     const jobs = await fetchJobTreadJobs(pave);
     expect(sent.every((q) => Object.keys(q).every((k) => ["customField", "currentGrant", "organization"].includes(k)))).toBe(true);
     expect(jobs.map((j) => [j.jobNumber, j.stage, j.installOn])).toEqual([
-      ["50001", "Purchasing", "2026-10-20"],
+      ["50001", "Purchasing", "2026-10-21"],
       ["50003", "Production", "2026-10-15"],
-      ["50004", null, "2026-11-30"],
       ["50005", "Complete", "2026-10-01"],
     ]);
-    expect(jobs[2].materials).toEqual(["Countertops - 4 weeks", "Lighting – 4 weeks"]);
+    // 50004 has no Status 2.0 and 50006 is Unsold, so neither is on the board.
+    expect(jobs[2].materials).toEqual(["Countertops - 4 weeks"]);
     expect(jobs[0]).toMatchObject({ customer: "Sample, Pat", installConfirmed: true, stageSince: new Date("2026-10-10T14:00:00Z") });
 
     const db = await openDb("memory:");
     await saveSnapshot(db, parseSpecialOrders(readFileSync(path.join(__dirname, "fixtures", "special-orders.tsv"), "utf8")));
     await saveJobTreadSync(db, jobs);
     const board = await loadJobBoard(db, "2026-10-12");
-    expect(board.lastSync?.jobCount).toBe(4);
+    expect(board.lastSync?.jobCount).toBe(3);
     expect(board.jobs.map((j) => [j.jobNumber, j.risk, j.past])).toEqual([
       ["50005", "in-production", true],
       ["50003", "in-production", false],
       ["50001", "warning", false],
-      ["50004", "ok", false],
     ]);
+    // The name says 10/21 but the Confirmed Install Date field says 10/20.
+    expect(board.jobs[2]).toMatchObject({ installOn: "2026-10-21", installFieldOn: "2026-10-20" });
     expect(board.jobs.filter(isJobAtRisk).map((j) => j.jobNumber)).toEqual(["50001"]);
     expect(board.jobs[2].manager).toMatchObject({ folders: 2, waitingOnStep: 5 });
     expect(board.jobs[1].manager).toBeNull();

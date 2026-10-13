@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getDb } from "@/db";
 import { todayIn } from "@/lib/board";
 import { isJobAtRisk, loadJobBoard, type BoardJob } from "@/lib/jobBoard";
+import { SORTS, sortJobs, type SortKey } from "@/lib/jobFilters";
 import { MATERIALS, materialLabel, STAGES, stageInfo } from "@/lib/jobtread/fields";
 import { jobTreadConfigured, refreshFromJobTread } from "@/lib/jobtread/refresh";
 import { RISK_WINDOW_DAYS, type Risk } from "@/lib/manager/progress";
@@ -16,7 +17,7 @@ const WINDOWS = [7, 14, 30] as const;
 const NO_STAGE = "none";
 const AUTO_REFRESH_MS = 3 * 60 * 1000;
 
-type Params = { window?: string; stage?: string; q?: string; ready?: string; view?: string; material?: string };
+type Params = { window?: string; stage?: string; q?: string; ready?: string; view?: string; material?: string; sort?: string };
 
 const RISK_CLASS: Record<Risk, string> = {
   "in-production": "ok",
@@ -83,8 +84,8 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
 
   const past = params.view === "past";
   const material = MATERIALS.includes(params.material ?? "") ? params.material! : null;
-  // A material tab lists every upcoming job with that material unless narrowed.
-  const windowDays = WINDOWS.find((w) => String(w) === params.window) ?? (params.window === "all" || material ? null : 14);
+  const windowDays = WINDOWS.find((w) => String(w) === params.window) ?? (params.window === "all" ? null : 14);
+  const sort: SortKey = SORTS.find((x) => x.key === params.sort)?.key ?? (past ? "install-desc" : "install");
   const stageFilter = past ? null : (params.stage ?? null);
   const showReady = params.ready === "1";
   const q = (params.q ?? "").trim().toLowerCase();
@@ -107,12 +108,11 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const list = scoped.filter((j) => {
     if (past) return matches(j, q);
     if (stageFilter) return stageKey(j) === stageFilter && matches(j, q);
-    if (!showReady && !material && j.risk === "in-production") return false;
+    if (!showReady && j.risk === "in-production") return false;
     if (windowDays !== null && j.daysToInstall !== null && j.daysToInstall > windowDays) return false;
     return matches(j, q);
   });
-  // Most recent first when looking back.
-  if (past) list.sort((a, b) => (b.installOn ?? "").localeCompare(a.installOn ?? ""));
+  const sorted = sortJobs(list, sort);
 
   const href = (next: Partial<Params>) => {
     const merged = { ...params, ...next };
@@ -120,7 +120,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     return qs.size ? `/?${qs}` : "/";
   };
 
-  const queues = [...STAGES.map((s) => ({ key: s.name, name: s.name, dept: s.department })), { key: NO_STAGE, name: "Status 2.0 not set", dept: "No stage yet" }];
+  const queues = STAGES.map((s) => ({ key: s.name, name: s.name, dept: s.department }));
 
   return (
     <>
@@ -149,16 +149,6 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         </Link>
       </nav>
 
-      <nav className="tabs" aria-label="Material type">
-        <Link className="tab" aria-current={!material ? "page" : undefined} href={href({ material: undefined })}>
-          All jobs <span className="num">{inView.length}</span>
-        </Link>
-        {MATERIALS.map((m) => (
-          <Link key={m} className="tab" aria-current={material === m ? "page" : undefined} href={href({ material: m })} title={m}>
-            {materialLabel(m)} <span className="num">{materialCount.get(m) ?? 0}</span>
-          </Link>
-        ))}
-      </nav>
 
       {!past && (<>
       <section className={`alert${atRisk.length ? "" : " calm"}`}>
@@ -200,8 +190,25 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       <form key={JSON.stringify(params)} className="controls" method="get" action="/">
         {stageFilter && <input type="hidden" name="stage" value={stageFilter} />}
         {past && <input type="hidden" name="view" value="past" />}
-        {material && <input type="hidden" name="material" value={material} />}
+
         <input type="search" name="q" defaultValue={params.q ?? ""} placeholder="Search customer, job #, city" aria-label="Search" />
+        <label>
+          Material{" "}
+          <select name="material" defaultValue={material ?? ""}>
+            <option value="">Any</option>
+            {MATERIALS.map((m) => (
+              <option key={m} value={m}>{materialLabel(m)} ({materialCount.get(m) ?? 0})</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Sort{" "}
+          <select name="sort" defaultValue={sort}>
+            {SORTS.map((x) => (
+              <option key={x.key} value={x.key}>{x.label}</option>
+            ))}
+          </select>
+        </label>
         {!past && (<>
         <label>
           Installing within{" "}
@@ -212,11 +219,9 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             <option value="all">any time</option>
           </select>
         </label>
-        {!material && (
-          <label>
-            <input type="checkbox" name="ready" value="1" defaultChecked={showReady} /> Show jobs already in production
-          </label>
-        )}
+        <label>
+          <input type="checkbox" name="ready" value="1" defaultChecked={showReady} /> Show jobs already in production
+        </label>
         </>)}
         <button className="btn" type="submit">Apply</button>
         <span className="small">
@@ -238,12 +243,12 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             </tr>
           </thead>
           <tbody>
-            {list.length === 0 && (
+            {sorted.length === 0 && (
               <tr>
                 <td colSpan={7} className="empty">No jobs match. Try another tab, widen the install window or clear the search.</td>
               </tr>
             )}
-            {list.map((j) => (
+            {sorted.map((j) => (
               <JobRow key={j.jobtreadId} j={j} today={today} />
             ))}
           </tbody>
@@ -251,7 +256,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       </div>
 
       <footer>
-        {board.lastSync.jobCount} jobs from JobTread: every sold job, plus any job with a Confirmed Install Date or Material Type. Past means installed or marked Complete. The board reloads by itself every few minutes. Today is {shortDate(today)}. Folder
+        {board.lastSync.jobCount} jobs from JobTread: every job whose Status 2.0 is Sold through Complete. Install dates come from the job name (the Confirmed Install Date field if the name has none). Past means installed or marked Complete. The board reloads by itself every few minutes. Today is {shortDate(today)}. Folder
         detail comes from the latest Manager paste when the job is in it.
       </footer>
     </>
@@ -271,7 +276,9 @@ function JobRow({ j, today }: { j: BoardJob; today: string }) {
       <td>
         <div className="date">{shortDate(j.installOn)}</div>
         <span className={`pill ${RISK_CLASS[j.risk]}`}>{riskText(j)}</span>
-        {j.installOn && !j.installConfirmed && <div className="small">Not marked confirmed</div>}
+        {j.installFieldOn && j.installOn && j.installFieldOn !== j.installOn && (
+          <div className="small" style={{ color: "var(--crit)", fontWeight: 600 }}>Install Date field says {md(j.installFieldOn)}</div>
+        )}
       </td>
       <td>
         <span className="jobno">{j.jobNumber}</span>

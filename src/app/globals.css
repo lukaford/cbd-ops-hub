@@ -130,3 +130,30 @@ a.btn { text-decoration: none; display: inline-block; }
 .tab .num { color: var(--muted); font-size: 12px; }
 .tab[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
 .tab[aria-current="page"] .num { color: inherit; opacity: .8; }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: var(--panel); border-radius: 8px; overflow: hidden; }
+.cal-head { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 6px 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.cal-day { min-height: 96px; padding: 4px 6px 6px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cal-day.out { background: var(--bg); }
+.cal-day.out .cal-num { opacity: .4; }
+.cal-day.today .cal-num { background: var(--accent); color: var(--panel); border-radius: 999px; padding: 0 6px; align-self: flex-start; }
+.cal-num { font-size: 12px; font-weight: 600; color: var(--muted); }
+.chip { font-size: 11px; line-height: 1.3; border-radius: 4px; padding: 2px 5px; background: var(--step-off); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip .jobno { font-size: 11px; }
+.chip.crit { background: var(--crit-soft); }
+.chip.ok { background: var(--ok-soft); }
+.chip.done { opacity: .6; }
+.chip .mat { float: right; font-size: 10px; color: var(--muted); }
+tr.daystart td { border-top: 2px solid var(--line); }
+@media (max-width: 700px) { .cal-day { min-height: 60px; } .chip { font-size: 10px; } }
+@media print {
+  .nav, .noprint, .controls, form { display: none !important; }
+  body { background: #fff; }
+  .cal-day { min-height: 80px; }
+}
+.builder { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 10px; }
+.builder fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+.builder legend { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin-bottom: 4px; width: 100%; }
+.builder label { display: inline-flex; gap: 6px; align-items: center; }
+.builder input[type=date], .builder input[type=search], .builder select, .controls input[type=text] { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: var(--bg); font: inherit; }
+.builder .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.tab button.link { background: none; border: 0; padding: 0 0 0 4px; font: inherit; color: inherit; cursor: pointer; opacity: .7; }
