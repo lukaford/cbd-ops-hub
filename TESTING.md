@@ -12,9 +12,9 @@ The app reads from JobTread and never changes anything there.
    - Mac: `start-mac.command` (the first time, right-click it, choose **Open**, then **Open** again)
 5. Paste your JobTread key when asked. It is saved only in a file called `.env.local` in that folder.
 
-The first start also puts a **CBD Ops Hub** icon on your Windows desktop, then installs and builds the app, which takes a few minutes. After that, your browser opens http://localhost:3000 with the board. Leave the black window open while you use it; closing it stops the app.
+On Windows, the first start copies the app to `%LOCALAPPDATA%\CBD Ops Hub\app` (outside OneDrive, which corrupts running apps) and puts a **CBD Ops Hub** icon on your desktop that starts it from there; you can then delete the downloaded folder. It then installs and builds the app, which takes a few minutes. After that, your browser opens http://localhost:3000 with the board. Leave the black window open while you use it; closing it stops the app.
 
-To change the key later, delete `.env.local` and start again. To see folder detail from Manager, choose **Paste Special Orders** and paste the table.
+To update on Windows, download the new ZIP and double-click its `start-windows.bat`; it replaces the installed copy and keeps your key. To change the key, delete `.env.local` from `%LOCALAPPDATA%\CBD Ops Hub\app` and start again. To see folder detail from Manager, choose **Paste Special Orders** and paste the table.
 
 ## Putting it online
 
