@@ -9,6 +9,8 @@ export const FIELD = {
   drawerAssemblyOn: "22PcdJFGaeuG",
   finalQaOn: "22PcdJFJ6Fdt",
   materialsOrdered: "22Pejy3rmHmG", // "All Materials Ordered"
+  materials: "22PdgJjvKYuK", // "Material Type", one value per material on the job
+  orderBy: "22PdgJrmCvAa", // "Lead Time Date (Order By)"
 } as const;
 
 export const FIELD_IDS = Object.values(FIELD);
@@ -34,9 +36,26 @@ export const STAGES: Stage[] = [
   { name: "Ready for Install, Hold", department: "Installation", inProduction: true, hold: true },
 ];
 
-// Status 2.0 values that put a job on the board. "Complete" and "Unsold" stay off.
+// Status 2.0 values for jobs still heading to install.
 export const ACTIVE_STAGES = STAGES.map((s) => s.name);
+export const COMPLETE = "Complete";
+
+// Material Type options, in JobTread's order. Tabs show the name without the lead time.
+export const MATERIALS = [
+  "Special Order Accessories",
+  "Countertops - 4 weeks",
+  "Deco (no glass) – 4 weeks",
+  "Deco (glass, mesh, other) – 5 weeks",
+  "Lighting – 4 weeks",
+  "Glass shelves – 4 weeks",
+  "Traxtile Garage Flooring – 3 weeks",
+];
+
+export function materialLabel(name: string): string {
+  return name.replace(/\s+[-–]\s+\d+\s+weeks?$/, "");
+}
 
 export function stageInfo(name: string | null): Stage | null {
+  if (name === COMPLETE) return { name: COMPLETE, department: "Installed", inProduction: true };
   return STAGES.find((s) => s.name === name) ?? null;
 }

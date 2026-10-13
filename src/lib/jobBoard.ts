@@ -1,7 +1,7 @@
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@/db";
 import { folders, jobs, jobtreadJobs, jobtreadSyncs } from "@/db/schema";
-import { stageInfo } from "./jobtread/fields";
+import { COMPLETE, stageInfo } from "./jobtread/fields";
 import { daysBetween, RISK_WINDOW_DAYS, type Risk } from "./manager/progress";
 
 export interface BoardJob {
@@ -17,6 +17,10 @@ export interface BoardJob {
   daysToInstall: number | null;
   production: { label: string; on: string | null }[];
   materialsOrdered: boolean | null;
+  materials: string[];
+  orderBy: string | null;
+  // Installed or marked Complete; shown under Past instead of Upcoming.
+  past: boolean;
   risk: Risk;
   // From the latest Manager paste, when the job is in it.
   manager: { installOn: string | null; folders: number; waitingOnStep: number | null } | null;
@@ -37,8 +41,12 @@ export function jobRisk(stage: string | null, installOn: string | null, today: s
   return "ok";
 }
 
+export function isPast(stage: string | null, installOn: string | null, today: string): boolean {
+  return stage === COMPLETE || (installOn !== null && installOn < today);
+}
+
 export function isJobAtRisk(j: BoardJob): boolean {
-  return j.risk === "critical" || j.risk === "warning" || j.risk === "past-install";
+  return !j.past && (j.risk === "critical" || j.risk === "warning");
 }
 
 export async function loadJobBoard(db: Db, today: string): Promise<JobBoard> {
@@ -83,6 +91,9 @@ export async function loadJobBoard(db: Db, today: string): Promise<JobBoard> {
           { label: "Final QA", on: r.finalQaOn },
         ],
         materialsOrdered: r.materialsOrdered,
+        materials: r.materials,
+        orderBy: r.orderBy,
+        past: isPast(r.stage, r.installOn, today),
         risk: jobRisk(r.stage, r.installOn, today),
         manager: mgr
           ? { installOn: mgr.installOn, folders: fs.length, waitingOnStep: waiting.length ? Math.min(...waiting) : null }
