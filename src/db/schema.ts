@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, customType, date, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, customType, date, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({ dataType: () => "bytea" });
 
@@ -106,6 +106,9 @@ export const jobtreadJobs = pgTable("jobtread_jobs", {
   materialsOrdered: boolean("materials_ordered"),
   materials: text("materials").array().notNull().default([]),
   orderBy: date("order_by", { mode: "string" }),
+  // JobTread users who uploaded the job's first photos: the designer takes them
+  // at the appointment, sold or not, so this is how a designer's own leads are found.
+  photographers: text("photographers").array().notNull().default([]),
   syncId: integer("sync_id").notNull().references(() => jobtreadSyncs.id),
 });
 
@@ -205,8 +208,9 @@ export const paperworkIssues = pgTable("paperwork_issues", {
 
 // ---- Accounts ----------------------------------------------------------------
 // Staff sign in with email + password. Clients sign in with a one-time link, so
-// they never manage a password. Permissions come from role + departments in code
-// (src/lib/auth/permissions.ts), so a change of policy needs no migration.
+// they never manage a password. What staff can do comes from the categories an
+// admin puts them in; each category is a set of permissions (the list lives in
+// src/lib/auth/permissions.ts) plus whether it sees every job or only its own.
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -215,9 +219,10 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   // Initials as written in Manager's REF column, to tie step sign-offs to a person.
   initials: text("initials").notNull().default(""),
-  // "admin" (everything, manages accounts), "manager" (everything), "staff" (their departments).
+  // "admin" can do everything, including accounts and categories; "staff" gets what their categories give.
   role: text("role").notNull().default("staff"),
-  departments: text("departments").array().notNull().default([]),
+  // How this person's name is written on jobs (Manager's DESIGNER column), for "own jobs" access.
+  jobNames: text("job_names").array().notNull().default([]),
   // Null until the person accepts their invite and picks a password.
   passwordHash: text("password_hash"),
   // Switched off instead of deleted, so their history keeps a name.
@@ -225,6 +230,40 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
 });
+
+export const staffCategories = pgTable("staff_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description").notNull().default(""),
+  permissions: text("permissions").array().notNull().default([]),
+  // "all": every job. "own": only jobs that are theirs (see job_assignments).
+  jobScope: text("job_scope").notNull().default("all"),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userCategories = pgTable(
+  "user_categories",
+  {
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    categoryId: integer("category_id").notNull().references(() => staffCategories.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.categoryId] })],
+);
+
+// Jobs given to a person by hand, on top of the ones that are theirs automatically
+// (their name on the job, their clients' jobs, paperwork they started).
+export const jobAssignments = pgTable(
+  "job_assignments",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    jobNumber: text("job_number").notNull(),
+    createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("job_assignments_user_job").on(t.userId, t.jobNumber), index("job_assignments_job").on(t.jobNumber)],
+);
 
 export const clients = pgTable("clients", {
   id: serial("id").primaryKey(),
@@ -234,6 +273,8 @@ export const clients = pgTable("clients", {
   phone: text("phone").notNull().default(""),
   // JobTread customer, when known (read-only reference).
   jobtreadCustomerId: text("jobtread_customer_id"),
+  // The designer looking after this client; designers who see only their own work see only these.
+  assignedUserId: integer("assigned_user_id").references(() => users.id, { onDelete: "set null" }),
   active: boolean("active").notNull().default(true),
   createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -331,3 +372,25 @@ export const priceBookChunks = pgTable(
   },
   (t) => [uniqueIndex("price_book_chunks_book_seq").on(t.bookId, t.seq)],
 );
+// In-app alerts: a bell in the menu shows unread ones.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    // e.g. "designer_needed"
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    link: text("link").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [index("notifications_user_unread").on(t.userId, t.readAt)],
+);
+
+// Jobs the front office has been asked to give a designer, so each job is asked about once.
+export const designerRequests = pgTable("designer_requests", {
+  jobNumber: text("job_number").primaryKey(),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+});

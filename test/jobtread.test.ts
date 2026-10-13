@@ -46,6 +46,7 @@ const JOBS = [
     name: "50006 Lead 10/2/26",
     location: { city: "Otherton", account: { name: "Lead, Al" } },
     customFieldValues: { nodes: [value(FIELD.status2, "Unsold"), value(FIELD.materials, "Lighting – 4 weeks")] },
+    files: { nodes: [{ createdByUser: { name: "Dee Designer" } }, { createdByUser: { name: "Dee Designer" } }, { createdByUser: { name: "Office Person" } }] },
   },
 ];
 
@@ -103,6 +104,9 @@ describe("JobTread sync", () => {
     ]);
     // An unsold job's name carries its appointment date, not an install date.
     expect(jobs[3].apptOn).toBe("2026-10-02");
+    // Whoever took the photos, once each, so a designer's leads can be found.
+    expect(jobs[3].photographers).toEqual(["Dee Designer", "Office Person"]);
+    expect(jobs[0].photographers).toEqual([]);
     // 50004 has no Status 2.0, so it is left out.
     expect(jobs[2].materials).toEqual(["Countertops - 4 weeks"]);
     expect(jobs[0]).toMatchObject({ customer: "Sample, Pat", installConfirmed: true, stageSince: new Date("2026-10-10T14:00:00Z") });

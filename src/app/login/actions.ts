@@ -56,7 +56,7 @@ export async function setUpOwner(_prev: string | null, form: FormData): Promise<
   const result = await signInStaff(db, email, password, await requestMeta());
   if (!result.ok) return result.error;
   await setAccountCookie(result.session, STAFF_SESSION_DAYS);
-  redirect("/admin/users");
+  redirect("/admin");
 }
 
 export async function acceptInvite(_prev: string | null, form: FormData): Promise<string | null> {

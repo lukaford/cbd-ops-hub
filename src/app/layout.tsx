@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { and, count, eq, isNull } from "drizzle-orm";
+import { getDb } from "@/db";
+import { notifications } from "@/db/schema";
 import { accountsEnabled, currentAccount } from "@/lib/auth/current";
-import { can, canOpen } from "@/lib/auth/permissions";
+import { canOpen } from "@/lib/auth/permissions";
 import { SESSION_COOKIE, validSession } from "@/lib/session";
 import { signOut } from "./login/actions";
 import "./globals.css";
@@ -22,7 +25,8 @@ const STAFF_LINKS = [
   { href: "/folders", label: "Folders" },
   { href: "/import", label: "Paste Special Orders" },
   { href: "/clients", label: "Clients" },
-  { href: "/admin/users", label: "Staff" },
+  { href: "/assign", label: "Needs designer" },
+  { href: "/admin", label: "Admin" },
 ];
 
 async function Nav() {
@@ -54,13 +58,20 @@ async function Nav() {
     );
   }
   if (!account) return null;
-  const user = account.user;
+  const { user, access } = account;
+  const [{ unread }] = await (await getDb())
+    .select({ unread: count() })
+    .from(notifications)
+    .where(and(eq(notifications.userId, user.id), isNull(notifications.readAt)));
   return (
     <>
-      {STAFF_LINKS.filter((l) => canOpen(user, l.href)).map((l) => (
+      {STAFF_LINKS.filter((l) => canOpen(access, l.href)).map((l) => (
         <Link key={l.href} href={l.href}>{l.label}</Link>
       ))}
-      <span className="who">{user.name}{can(user, "users.manage") ? " · admin" : ""}</span>
+      <Link className="who" href="/alerts" aria-label={`Alerts, ${unread} new`}>
+        Alerts{unread > 0 && <span className="badge">{unread}</span>}
+      </Link>
+      <span className="who">{user.name}{access.admin ? " · admin" : ""}</span>
       {signOutButton}
     </>
   );

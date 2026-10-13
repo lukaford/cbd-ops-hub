@@ -24,6 +24,7 @@ export interface JobTreadJob {
   materialsOrdered: boolean | null;
   materials: string[];
   orderBy: string | null;
+  photographers: string[];
 }
 
 const PAGE = 100;
@@ -89,6 +90,7 @@ export function toJob(node: any): JobTreadJob {
     materialsOrdered: typeof ordered === "boolean" ? ordered : null,
     materials: [...new Set(materials)],
     orderBy: isoDate(get(FIELD.orderBy)),
+    photographers: [...new Set<string>((node.files?.nodes ?? []).map((f: any) => f.createdByUser?.name).filter(Boolean))],
   };
 }
 
@@ -117,6 +119,11 @@ export async function fetchJobTreadJobs(pave: Pave): Promise<JobTreadJob[]> {
             customFieldValues: {
               $: { size: 40, where: [["customField", "id"], "in", FIELD_IDS] },
               nodes: { value: {}, createdAt: {}, customField: { id: {} } },
+            },
+            // Who took the first photos, to find each designer's jobs.
+            files: {
+              $: { size: 10, where: ["type", "like", "image/%"], sortBy: [{ field: "createdAt" }] },
+              nodes: { createdByUser: { name: {} } },
             },
           },
         },

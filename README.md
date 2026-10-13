@@ -23,7 +23,7 @@ Without `DATABASE_URL`, data is kept in a built-in database in `%LOCALAPPDATA%\C
 
 ## Accounts
 
-Open `/setup` once to make the admin account, then add staff from the **Staff** page and clients from **Clients**. Staff sign in with email and password; clients get one-time sign-in links. Details and the full table layout: [docs/database.md](docs/database.md).
+Open `/setup` once to make the admin account, then manage employee accounts and the categories that set their permissions from **Admin**, and clients from **Clients**. Staff sign in with email and password; clients get one-time sign-in links. Details and the full table layout: [docs/database.md](docs/database.md).
 
 ## How JobTread is read
 

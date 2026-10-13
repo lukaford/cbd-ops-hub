@@ -1,9 +1,9 @@
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
-import { and, count, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/db";
-import { auditEvents, authSessions, authTokens, clientJobs, clients, users } from "@/db/schema";
-import { isDepartment, isRole } from "./permissions";
+import { auditEvents, authSessions, authTokens, clientJobs, clients, jobAssignments, jobs, jobtreadJobs, paperworkPackets, staffCategories, userCategories, users } from "@/db/schema";
+import { accessFrom, DEFAULT_CATEGORIES, isPermission, type Access, type JobScope } from "./permissions";
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number, opts: { N: number; r: number; p: number }) => Promise<Buffer>;
 
@@ -16,7 +16,8 @@ export type TokenPurpose = keyof typeof TOKEN_HOURS;
 
 export type StaffUser = typeof users.$inferSelect;
 export type Client = typeof clients.$inferSelect;
-export type Account = { kind: "staff"; user: StaffUser } | { kind: "client"; client: Client };
+export type Category = typeof staffCategories.$inferSelect;
+export type Account = { kind: "staff"; user: StaffUser; access: Access } | { kind: "client"; client: Client };
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
@@ -79,14 +80,13 @@ export async function countUsers(db: Db): Promise<number> {
   return row.n;
 }
 
-export type StaffInput = { email: string; name: string; initials?: string; role: string; departments: string[] };
+export type StaffInput = { email: string; name: string; initials?: string; role: string; categoryIds: number[]; jobNames?: string[] };
 
 export function staffInputProblem(input: StaffInput): string | null {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(input.email))) return "Enter a valid email address.";
   if (!input.name.trim()) return "Enter their name.";
-  if (!isRole(input.role)) return "Pick a role.";
-  if (!input.departments.every(isDepartment)) return "Unknown department.";
-  if (input.role === "staff" && input.departments.length === 0) return "Pick at least one department for staff.";
+  if (input.role !== "admin" && input.role !== "staff") return "Pick admin or staff.";
+  if (input.role === "staff" && input.categoryIds.length === 0) return "Put them in at least one category.";
   return null;
 }
 
@@ -96,16 +96,38 @@ function staffValues(input: StaffInput) {
     name: input.name.trim(),
     initials: (input.initials ?? "").trim().toUpperCase(),
     role: input.role,
-    departments: [...new Set(input.departments)],
+    jobNames: [...new Set((input.jobNames ?? []).map((n) => n.trim()).filter(Boolean))],
   };
+}
+
+async function setCategories(db: Db, userId: number, categoryIds: number[]) {
+  await db.delete(userCategories).where(eq(userCategories.userId, userId));
+  const ids = [...new Set(categoryIds)];
+  if (ids.length) await db.insert(userCategories).values(ids.map((categoryId) => ({ userId, categoryId })));
+}
+
+export async function categoriesOf(db: Db, userId: number): Promise<Category[]> {
+  return db
+    .select({ category: staffCategories })
+    .from(userCategories)
+    .innerJoin(staffCategories, eq(staffCategories.id, userCategories.categoryId))
+    .where(eq(userCategories.userId, userId))
+    .then((rows) => rows.map((r) => r.category));
+}
+
+export async function accessOf(db: Db, user: StaffUser): Promise<Access> {
+  return accessFrom(user.role, await categoriesOf(db, user.id));
 }
 
 // The first account, made from the setup page, is an admin with a password.
 export async function createOwner(db: Db, input: { email: string; name: string; password: string }): Promise<StaffUser> {
   const [user] = await db
     .insert(users)
-    .values({ ...staffValues({ ...input, role: "admin", departments: [] }), passwordHash: await hashPassword(input.password) })
+    .values({ ...staffValues({ ...input, role: "admin", categoryIds: [] }), passwordHash: await hashPassword(input.password) })
     .returning();
+  if ((await listCategories(db)).length === 0) {
+    await db.insert(staffCategories).values(DEFAULT_CATEGORIES.map((c, position) => ({ ...c, position })));
+  }
   await audit(db, { action: "owner_created", userId: user.id, entity: "user", entityId: user.id });
   return user;
 }
@@ -113,8 +135,9 @@ export async function createOwner(db: Db, input: { email: string; name: string; 
 // Everyone else is invited: the account exists without a password until they open the link.
 export async function inviteUser(db: Db, input: StaffInput, byUserId: number): Promise<{ user: StaffUser; token: string }> {
   const [user] = await db.insert(users).values(staffValues(input)).returning();
+  await setCategories(db, user.id, input.categoryIds);
   const token = await issueToken(db, "staff_invite", { userId: user.id }, byUserId);
-  await audit(db, { action: "user_invited", userId: byUserId, entity: "user", entityId: user.id, data: { role: user.role, departments: user.departments } });
+  await audit(db, { action: "user_invited", userId: byUserId, entity: "user", entityId: user.id, data: { role: user.role, categoryIds: input.categoryIds } });
   return { user, token };
 }
 
@@ -126,16 +149,16 @@ export async function updateUser(db: Db, id: number, input: StaffInput & { activ
     throw new Error("Keep at least one active admin.");
   }
   await db.update(users).set(after).where(eq(users.id, id));
-  // Access changes take effect at once: sign them out everywhere.
-  if (!after.active || before.role !== after.role || before.departments.join() !== after.departments.join()) {
-    await db.delete(authSessions).where(eq(authSessions.userId, id));
-  }
+  await setCategories(db, id, input.role === "admin" ? [] : input.categoryIds);
+  // Access is worked out on every request, so changes apply at once; switching
+  // someone off also signs them out everywhere.
+  if (!after.active) await db.delete(authSessions).where(eq(authSessions.userId, id));
   await audit(db, {
     action: "user_updated",
     userId: byUserId,
     entity: "user",
     entityId: id,
-    data: { role: after.role, departments: after.departments, active: after.active },
+    data: { role: after.role, categoryIds: input.categoryIds, active: after.active },
   });
 }
 
@@ -189,15 +212,91 @@ export async function setPasswordWithToken(db: Db, token: string, password: stri
   return { ok: true, user, session: await startSession(db, { userId: user.id }, meta.userAgent) };
 }
 
+// ---- Categories
+
+export async function listCategories(db: Db): Promise<Category[]> {
+  return db.select().from(staffCategories).orderBy(asc(staffCategories.position), asc(staffCategories.name));
+}
+
+export type CategoryInput = { name: string; description?: string; permissions: string[]; jobScope: string };
+
+export async function saveCategory(db: Db, id: number | null, input: CategoryInput, byUserId: number): Promise<Category> {
+  const name = input.name.trim();
+  if (!name) throw new Error("Give the category a name.");
+  const values = {
+    name,
+    description: (input.description ?? "").trim(),
+    permissions: [...new Set(input.permissions.filter(isPermission))],
+    jobScope: (input.jobScope === "own" ? "own" : "all") as JobScope,
+  };
+  let category: Category;
+  if (id) {
+    [category] = await db.update(staffCategories).set(values).where(eq(staffCategories.id, id)).returning();
+  } else {
+    const [{ n }] = await db.select({ n: count() }).from(staffCategories);
+    [category] = await db.insert(staffCategories).values({ ...values, position: n }).returning();
+  }
+  await audit(db, { action: id ? "category_updated" : "category_created", userId: byUserId, entity: "category", entityId: category.id, data: values });
+  return category;
+}
+
+export async function deleteCategory(db: Db, id: number, byUserId: number) {
+  const [{ n }] = await db.select({ n: count() }).from(userCategories).where(eq(userCategories.categoryId, id));
+  if (n > 0) throw new Error("Move everyone out of this category first.");
+  const [gone] = await db.delete(staffCategories).where(eq(staffCategories.id, id)).returning();
+  if (gone) await audit(db, { action: "category_deleted", userId: byUserId, entity: "category", entityId: id, data: { name: gone.name } });
+}
+
+// ---- Own jobs, for people whose categories only see their own work
+
+export async function assignJobs(db: Db, userId: number, jobNumbers: string[], byUserId: number | null) {
+  const unique = [...new Set(jobNumbers.map((j) => j.trim()).filter(Boolean))];
+  await db.delete(jobAssignments).where(eq(jobAssignments.userId, userId));
+  if (unique.length) await db.insert(jobAssignments).values(unique.map((jobNumber) => ({ userId, jobNumber, createdByUserId: byUserId })));
+}
+
+export async function assignedJobNumbers(db: Db, userId: number): Promise<string[]> {
+  const rows = await db.select({ n: jobAssignments.jobNumber }).from(jobAssignments).where(eq(jobAssignments.userId, userId)).orderBy(jobAssignments.jobNumber);
+  return rows.map((r) => r.n);
+}
+
+// A job is someone's own when their name is on it (Manager's DESIGNER column,
+// the paperwork's designer, or they took its photos in JobTread), it was assigned to them, it belongs to one of their
+// clients, or they started paperwork for it.
+export async function ownJobNumbers(db: Db, user: StaffUser): Promise<Set<string>> {
+  const names = user.jobNames.map((n) => n.trim().toLowerCase()).filter(Boolean);
+  const byName = names.length
+    ? [
+        db.select({ n: jobs.jobNumber }).from(jobs).where(inArray(sql`lower(trim(${jobs.designer}))`, names)),
+        db.select({ n: paperworkPackets.jobNumber }).from(paperworkPackets).where(inArray(sql`lower(trim(${paperworkPackets.designer}))`, names)),
+      ]
+    : [];
+  const photographed = names.length
+    ? db
+        .select({ n: jobtreadJobs.jobNumber, by: jobtreadJobs.photographers })
+        .from(jobtreadJobs)
+        .where(sql`cardinality(${jobtreadJobs.photographers}) > 0`)
+        .then((rows) => rows.filter((r) => r.by.some((p) => names.includes(p.trim().toLowerCase()))))
+    : Promise.resolve([]);
+  const lists = await Promise.all([
+    ...byName,
+    photographed,
+    db.select({ n: jobAssignments.jobNumber }).from(jobAssignments).where(eq(jobAssignments.userId, user.id)),
+    db.select({ n: clientJobs.jobNumber }).from(clientJobs).innerJoin(clients, eq(clients.id, clientJobs.clientId)).where(eq(clients.assignedUserId, user.id)),
+    db.select({ n: paperworkPackets.jobNumber }).from(paperworkPackets).where(eq(paperworkPackets.createdByUserId, user.id)),
+  ]);
+  return new Set(lists.flat().map((r) => r.n));
+}
+
 // ---- Clients
 
-export type ClientInput = { name: string; email?: string; phone?: string; jobNumbers: string[] };
+export type ClientInput = { name: string; email?: string; phone?: string; jobNumbers: string[]; assignedUserId?: number | null };
 
 export async function createClient(db: Db, input: ClientInput, byUserId: number | null): Promise<Client> {
   const email = input.email?.trim() ? normalizeEmail(input.email) : null;
   const [client] = await db
     .insert(clients)
-    .values({ name: input.name.trim(), email, phone: (input.phone ?? "").trim(), createdByUserId: byUserId })
+    .values({ name: input.name.trim(), email, phone: (input.phone ?? "").trim(), assignedUserId: input.assignedUserId ?? null, createdByUserId: byUserId })
     .returning();
   await linkJobs(db, client.id, input.jobNumbers);
   await audit(db, { action: "client_created", userId: byUserId, entity: "client", entityId: client.id });
@@ -296,7 +395,7 @@ export async function accountForSession(db: Db, token: string | undefined): Prom
   if (!session) return null;
   if (session.userId) {
     const user = await db.query.users.findFirst({ where: and(eq(users.id, session.userId), eq(users.active, true)) });
-    return user ? { kind: "staff", user } : null;
+    return user ? { kind: "staff", user, access: await accessOf(db, user) } : null;
   }
   const client = await db.query.clients.findFirst({ where: and(eq(clients.id, session.clientId!), eq(clients.active, true)) });
   return client ? { kind: "client", client } : null;

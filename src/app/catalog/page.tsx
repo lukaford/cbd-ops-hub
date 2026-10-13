@@ -32,7 +32,7 @@ export default async function CatalogPage({
   const books = rows.map((r) => ({ ...r, model: r.model as PriceBookModel }));
   const hits = q ? searchCatalog(books, q) : [];
   const manage =
-    !(await accountsEnabled()) || can(await currentStaff(), "pricebook.manage");
+    !(await accountsEnabled()) || can((await currentStaff())?.access, "pricebook.manage");
   // Pages whose printed words match, for picture-heavy pages without clear price lines.
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const pageHits = q

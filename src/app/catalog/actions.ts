@@ -24,7 +24,7 @@ export async function uploadBooks(form: FormData): Promise<void> {
       const info = bookInfo(entry.name);
       // A newer copy of a book replaces the old one.
       await db.update(priceBooks).set({ archived: true }).where(and(eq(priceBooks.name, info.name), eq(priceBooks.archived, false)));
-      const [book] = await db.insert(priceBooks).values({ ...info, fileName: entry.name, uploadedByUserId: me?.id ?? null, size: bytes.length, model }).returning({ id: priceBooks.id });
+      const [book] = await db.insert(priceBooks).values({ ...info, fileName: entry.name, uploadedByUserId: me?.user.id ?? null, size: bytes.length, model }).returning({ id: priceBooks.id });
       for (let seq = 0, at = 0; at < bytes.length; seq++, at += CHUNK) await db.insert(priceBookChunks).values({ bookId: book.id, seq, data: bytes.slice(at, at + CHUNK) });
       added.push(`${info.name} (${model.pages.length} pages, ${model.items.length} priced lines)`);
     } catch (err) {

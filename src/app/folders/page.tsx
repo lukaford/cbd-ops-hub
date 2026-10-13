@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getDb } from "@/db";
+import { visibleJobs } from "@/lib/auth/current";
 import { isAtRisk, loadBoard, todayIn, type BoardFolder } from "@/lib/board";
 import { RISK_WINDOW_DAYS, type Risk } from "@/lib/manager/progress";
 import { PRODUCTION_STEPS, STEPS } from "@/lib/manager/steps";
@@ -54,7 +55,9 @@ export default async function FoldersPage({ searchParams }: { searchParams: Prom
   const params = await searchParams;
   const db = await getDb();
   const today = todayIn(TIME_ZONE);
-  const board = await loadBoard(db, today);
+  const all = await loadBoard(db, today);
+  const scope = await visibleJobs();
+  const board = scope ? { ...all, folders: all.folders.filter((f) => scope.has(f.jobNumber)) } : all;
 
   if (!board.lastImport) {
     return (

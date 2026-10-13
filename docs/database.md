@@ -12,13 +12,17 @@ PC today, hosted Postgres (Neon) later. Same tables either way; migrations in
 | Folder steps | `jobs`, `folders`, `folder_steps`, `special_orders`, `import_batches` | Manager Special Orders paste (rebuilt each paste) |
 | Reports | `saved_reports` | The hub |
 | Sales paperwork | `form_templates`, `paperwork_packets`, `paperwork_docs`, `paperwork_files`, `paperwork_signatures`, `paperwork_issues` | The hub |
-| **Accounts** | `users`, `clients`, `client_jobs`, `auth_sessions`, `auth_tokens`, `audit_events` | The hub |
+| **Accounts** | `users`, `staff_categories`, `notifications`, `designer_requests`, `user_categories`, `job_assignments`, `clients`, `client_jobs`, `auth_sessions`, `auth_tokens`, `audit_events` | The hub |
 
 Jobs are joined by **job number**, never by a row id, because the JobTread and
 Manager copies are replaced on every refresh.
 
 ```mermaid
 erDiagram
+  users ||--o{ user_categories : "is in"
+  staff_categories ||--o{ user_categories : "has"
+  users ||--o{ job_assignments : "own jobs"
+  users ||--o{ clients : "assigned designer"
   users ||--o{ auth_sessions : "signed-in browsers"
   clients ||--o{ auth_sessions : "signed-in browsers"
   users ||--o{ auth_tokens : "invite / reset links"
@@ -34,30 +38,69 @@ erDiagram
   users ||--o{ form_templates : "uploaded_by_user_id"
 ```
 
-## Staff accounts
+## Staff accounts and categories
 
 - **`users`**: email (lowercased, the sign-in name), name, initials (as written
-  in Manager's REF column, so step sign-offs can be tied to a person), role,
-  departments, password hash, on/off.
-- **Roles**: `admin` (everything, including staff accounts), `manager`
-  (everything else), `staff` (shared views plus their departments' work).
-- **Departments**: designer (in-home sales: paperwork, clients, leads), sales office, front office, engineering CAD, purchasing,
-  price verification, QA, production, installation. A person can be in several.
-- **Permissions** live in code, `src/lib/auth/permissions.ts`, as a list of
-  actions and the departments allowed each one. The Staff page shows the
-  table. Changing who can do what is a one-line, reviewed edit, no migration.
-- People are switched off, never deleted, so their history keeps a name.
-  Switching someone off or changing their access signs them out everywhere.
+  in Manager's REF column), account type, the name(s) written on their jobs,
+  password hash, on/off.
+- **Account type**: `admin` can do everything, including accounts and
+  categories. `staff` can do what their categories allow.
+- **`staff_categories`**: groups admins create and edit on the admin dashboard
+  (`/admin/categories`). Each has a name, a description, a set of permissions,
+  and which jobs it sees: **every job** or **only their own**. Ten starter
+  categories are made with the first admin account (Manager, Designer, Sales
+  office, Front office, Engineering CAD, Purchasing, Price verification, QA,
+  Production, Installation); all of them can be renamed, changed or deleted.
+- **`user_categories`**: who is in which category. A person can be in several
+  and can do anything any of them allows. They see every job if any of their
+  categories does, otherwise only their own.
+- **Permissions** are the fixed list of actions the app checks
+  (`src/lib/auth/permissions.ts`, grouped into Jobs, Sales, Paperwork,
+  Operations, Clients and Admin). Categories are built from them; a new kind of
+  action needs a code change because the app has to check it somewhere.
+- Access is worked out on every request, so category and account changes apply
+  at once. People are switched off, never deleted, so their history keeps a
+  name; switching someone off signs them out everywhere.
 - Passwords: scrypt with a per-password salt, 10+ characters. Ten wrong tries in
-  15 minutes locks that email for 15 minutes.
-- New staff get a one-time invite link (7 days) to choose their own password.
-  Admins can make a password reset link (2 hours). If email is set up the
-  invite is also emailed.
+  15 minutes locks that email for 15 minutes. New staff get a one-time invite
+  link (7 days); admins can make a password reset link (2 hours).
+
+## Own work (designers)
+
+People whose categories see only their own work see a job when:
+
+1. their "name as written on jobs" matches the DESIGNER column of the Manager
+   paste, the designer on a paperwork packet, or the JobTread user who uploaded
+   the job's first photos (designers photograph every site at the appointment,
+   sold or not, so this is how their leads are found),
+2. an admin assigned the job to them (**`job_assignments`**), for leads and jobs
+   their name isn't on yet,
+3. it's linked to one of their clients (`clients.assigned_user_id`), or
+4. they started paperwork for it.
+
+That limit applies to the jobs board, schedule, reports, leads, folders,
+paperwork (list, packets, sheets, files) and clients. JobTread has no designer
+field. In a sample of 18 jobs, the first photos' uploader matched Manager's
+designer on 16; the other two were uploaded by office accounts, which the
+Manager name still covers.
+
+### Jobs with no designer
+
+After every JobTread refresh and Manager paste, the app looks for open jobs that
+no designer account owns and that have no designer name in Manager. Each new
+one triggers an alert (**`notifications`**, shown as **Alerts** in the menu,
+and emailed when email is set up) to everyone whose categories include "Assign
+designers to jobs". That's the starter **Front office manager** category; if
+nobody has it, the admins are asked. **`designer_requests`** remembers which
+jobs were already asked about, so each job is asked about once, and a big batch
+(like the first run) becomes one summary alert. The **Needs designer** page
+lists those jobs with whoever took their photos as a hint. Assigning one adds a
+`job_assignments` row and clears its alert.
 
 ## Client sign-in
 
-Clients never get a password. Staff with "clients" access add the client, link
-their job numbers, and make a **one-time sign-in link**: text it, email it, or
+Clients never get a password. Staff with "clients" access add the client, pick their designer (a
+designer's new clients are their own), link their job numbers, and make a **one-time sign-in link**: text it, email it, or
 open it on the client's phone during the appointment. One tap signs them in on
 that device for 90 days.
 
@@ -86,13 +129,13 @@ Nothing changes until the first account exists. Until then the app behaves as
 before: open on the shop PC, or the shared `APP_PASSWORD` on a hosted copy.
 Open `/setup` to make the owner's admin account (on a hosted copy it asks for
 the shop password first, so a stranger can't claim it). From then on everyone
-signs in as themselves and the shared password is no longer used.
+signs in as themselves and the shared password is no longer used. The admin
+dashboard is at `/admin`: overview, accounts (filter by category), categories,
+and the activity log.
 
 ## Next steps this design leaves room for
 
-- Paperwork: fill `created_by_user_id`, `signer_user_id` / `signer_client_id`
-  and the issue columns from the signed-in account, and let clients sign from
-  the portal.
+- Paperwork: let clients sign from the portal (`signer_client_id`).
 - Price book: catalog tables gated by `pricebook.view` / `pricebook.manage`.
 - Client app synced with the designer during appointments: a short code or QR
   on the designer's tablet that issues a `client_login` token.
