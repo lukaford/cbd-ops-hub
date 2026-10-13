@@ -55,7 +55,7 @@ describe("staff accounts", () => {
   it("invites staff with a one-time link and signs them out when access changes", async () => {
     const db = await openDb("memory:");
     const admin = await createOwner(db, owner);
-    const { user, token } = await inviteUser(db, { email: "sam@example.com", name: "Sam", initials: "sm", role: "staff", departments: ["sales"] }, admin.id);
+    const { user, token } = await inviteUser(db, { email: "sam@example.com", name: "Sam", initials: "sm", role: "staff", departments: ["designer"] }, admin.id);
     expect(user).toMatchObject({ initials: "SM", passwordHash: null });
     expect(await signInStaff(db, "sam@example.com", "")).toMatchObject({ ok: false });
     expect((await peekToken(db, token, ["staff_invite"]))?.user?.id).toBe(user.id);
@@ -101,12 +101,14 @@ describe("client sign-in links", () => {
 });
 
 describe("permissions", () => {
-  const sales = { role: "staff", departments: ["sales"] };
+  const sales = { role: "staff", departments: ["designer"] };
   const install = { role: "staff", departments: ["installation"] };
 
   it("gives departments their own work and everyone the basics", () => {
     expect(can(sales, "paperwork.write")).toBe(true);
     expect(can(install, "paperwork.write")).toBe(false);
+    expect(can({ role: "staff", departments: ["sales"] }, "paperwork.write")).toBe(false);
+    expect(can({ role: "staff", departments: ["sales"] }, "clients.manage")).toBe(true);
     expect(can(install, "jobs.view")).toBe(true);
     expect(can({ role: "manager", departments: [] }, "paperwork.write")).toBe(true);
     expect(can({ role: "manager", departments: [] }, "users.manage")).toBe(false);

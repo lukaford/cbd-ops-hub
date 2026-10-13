@@ -41,7 +41,7 @@ erDiagram
   departments, password hash, on/off.
 - **Roles**: `admin` (everything, including staff accounts), `manager`
   (everything else), `staff` (shared views plus their departments' work).
-- **Departments**: sales/design, front office, engineering CAD, purchasing,
+- **Departments**: designer (in-home sales: paperwork, clients, leads), sales office, front office, engineering CAD, purchasing,
   price verification, QA, production, installation. A person can be in several.
 - **Permissions** live in code, `src/lib/auth/permissions.ts`, as a list of
   actions and the departments allowed each one. The Staff page shows the
