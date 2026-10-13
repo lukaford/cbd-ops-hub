@@ -1,7 +1,7 @@
 import type { Db } from "@/db";
 import { jobtreadJobs, jobtreadSyncs } from "@/db/schema";
 import type { Pave } from "./client";
-import { ACTIVE_STAGES, FIELD, FIELD_IDS } from "./fields";
+import { ACTIVE_STAGES, COMPLETE, FIELD, FIELD_IDS } from "./fields";
 
 export interface JobTreadJob {
   jobtreadId: string;
@@ -18,13 +18,14 @@ export interface JobTreadJob {
   drawerAssemblyOn: string | null;
   finalQaOn: string | null;
   materialsOrdered: boolean | null;
+  materials: string[];
+  orderBy: string | null;
 }
 
 const PAGE = 100;
-// Jobs whose install date passed more than this many days ago drop off unless their stage keeps them on.
-const RECENT_INSTALL_DAYS = 7;
+const BOARD_STAGES = [...ACTIVE_STAGES, COMPLETE];
 
-async function valueJobIds(pave: Pave, fieldId: string, where: unknown[]): Promise<string[]> {
+async function valueJobIds(pave: Pave, fieldId: string, where?: unknown[]): Promise<string[]> {
   const ids: string[] = [];
   let page: string | undefined;
   do {
@@ -32,7 +33,7 @@ async function valueJobIds(pave: Pave, fieldId: string, where: unknown[]): Promi
       customField: {
         $: { id: fieldId },
         customFieldValues: {
-          $: { size: PAGE, where, ...(page ? { page } : {}) },
+          $: { size: PAGE, ...(where ? { where } : {}), ...(page ? { page } : {}) },
           nextPage: {},
           nodes: { job: { id: {} } },
         },
@@ -51,7 +52,12 @@ function isoDate(v: unknown): string | null {
 
 export function toJob(node: any): JobTreadJob {
   const values = new Map<string, { value: unknown; createdAt: string }>();
-  for (const v of node.customFieldValues?.nodes ?? []) values.set(v.customField.id, v);
+  const materials: string[] = [];
+  for (const v of node.customFieldValues?.nodes ?? []) {
+    if (v.customField.id === FIELD.materials) {
+      if (typeof v.value === "string" && v.value) materials.push(v.value);
+    } else values.set(v.customField.id, v);
+  }
   const get = (id: string) => values.get(id)?.value;
   const stage = values.get(FIELD.status2);
   const ordered = get(FIELD.materialsOrdered);
@@ -70,18 +76,20 @@ export function toJob(node: any): JobTreadJob {
     drawerAssemblyOn: isoDate(get(FIELD.drawerAssemblyOn)),
     finalQaOn: isoDate(get(FIELD.finalQaOn)),
     materialsOrdered: typeof ordered === "boolean" ? ordered : null,
+    materials: [...new Set(materials)],
+    orderBy: isoDate(get(FIELD.orderBy)),
   };
 }
 
-// Jobs that are sold and not complete (by Status 2.0), plus any job with an
-// upcoming Confirmed Install Date. Reads only.
-export async function fetchJobTreadJobs(pave: Pave, today: string): Promise<JobTreadJob[]> {
-  const since = new Date(Date.parse(today) - RECENT_INSTALL_DAYS * 864e5).toISOString().slice(0, 10);
-  const [staged, installing] = await Promise.all([
-    valueJobIds(pave, FIELD.status2, ["value", "in", ACTIVE_STAGES]),
-    valueJobIds(pave, FIELD.installOn, ["dateValue", ">=", since]),
+// Every sold job (Status 2.0 from Sold through Complete), plus any job with a
+// Confirmed Install Date or a Material Type, past or upcoming. Reads only.
+export async function fetchJobTreadJobs(pave: Pave): Promise<JobTreadJob[]> {
+  const [staged, installing, withMaterials] = await Promise.all([
+    valueJobIds(pave, FIELD.status2, ["value", "in", BOARD_STAGES]),
+    valueJobIds(pave, FIELD.installOn),
+    valueJobIds(pave, FIELD.materials),
   ]);
-  const ids = [...new Set([...staged, ...installing])];
+  const ids = [...new Set([...staged, ...installing, ...withMaterials])];
   if (!ids.length) return [];
 
   const { currentGrant } = await pave({ currentGrant: { organization: { id: {} } } });
@@ -100,7 +108,7 @@ export async function fetchJobTreadJobs(pave: Pave, today: string): Promise<JobT
             name: {},
             location: { city: {}, account: { name: {} } },
             customFieldValues: {
-              $: { size: 25, where: [["customField", "id"], "in", FIELD_IDS] },
+              $: { size: 40, where: [["customField", "id"], "in", FIELD_IDS] },
               nodes: { value: {}, createdAt: {}, customField: { id: {} } },
             },
           },
@@ -109,8 +117,8 @@ export async function fetchJobTreadJobs(pave: Pave, today: string): Promise<JobT
     });
     for (const node of res.organization.jobs.nodes) jobs.push(toJob(node));
   }
-  // A job that left the board between the two reads (e.g. marked Complete) has no stage and no upcoming date.
-  return jobs.filter((j) => (j.stage && ACTIVE_STAGES.includes(j.stage)) || (j.installOn && j.installOn >= since));
+  // Leads and unsold jobs stay off even if someone filled in a date or material.
+  return jobs.filter((j) => (j.stage ? BOARD_STAGES.includes(j.stage) : Boolean(j.installOn || j.materials.length)));
 }
 
 // Replaces the stored copy with what JobTread says now.

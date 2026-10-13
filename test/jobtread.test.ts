@@ -31,7 +31,21 @@ const JOBS = [
     number: "50004",
     name: "50004 Dated",
     location: { city: "Otherton", account: { name: "Dated, Sam" } },
-    customFieldValues: { nodes: [value(FIELD.installOn, "2026-11-30")] },
+    customFieldValues: { nodes: [value(FIELD.installOn, "2026-11-30"), value(FIELD.materials, "Countertops - 4 weeks"), value(FIELD.materials, "Lighting – 4 weeks")] },
+  },
+  {
+    id: "jt4",
+    number: "50005",
+    name: "50005 Done",
+    location: { city: "Otherton", account: { name: "Done, Jo" } },
+    customFieldValues: { nodes: [value(FIELD.status2, "Complete"), value(FIELD.installOn, "2026-10-01"), value(FIELD.materials, "Countertops - 4 weeks")] },
+  },
+  {
+    id: "jt5",
+    number: "50006",
+    name: "50006 Lead",
+    location: { city: "Otherton", account: { name: "Lead, Al" } },
+    customFieldValues: { nodes: [value(FIELD.status2, "Unsold"), value(FIELD.materials, "Lighting – 4 weeks")] },
   },
 ];
 
@@ -42,7 +56,7 @@ function fakePave(): { pave: Pave; sent: PaveQuery[] } {
     sent.push(q);
     if (q.currentGrant) return { currentGrant: { organization: { id: "org1" } } };
     if (q.customField) {
-      const ids = q.customField.$.id === FIELD.status2 ? ["jt1", "jt2"] : ["jt1", "jt2", "jt3"];
+      const ids = { [FIELD.status2]: ["jt1", "jt2", "jt4"], [FIELD.installOn]: ["jt1", "jt2", "jt3", "jt4"], [FIELD.materials]: ["jt3", "jt4", "jt5"] }[q.customField.$.id as string]!;
       return { customField: { customFieldValues: { nextPage: null, nodes: ids.map((id) => ({ job: { id } })) } } };
     }
     const wanted: string[] = q.organization.jobs.$.where[2];
@@ -79,28 +93,31 @@ describe("JobTread client", () => {
 describe("JobTread sync", () => {
   it("reads sold jobs and upcoming installs, and builds the board", async () => {
     const { pave, sent } = fakePave();
-    const jobs = await fetchJobTreadJobs(pave, "2026-10-12");
+    const jobs = await fetchJobTreadJobs(pave);
     expect(sent.every((q) => Object.keys(q).every((k) => ["customField", "currentGrant", "organization"].includes(k)))).toBe(true);
     expect(jobs.map((j) => [j.jobNumber, j.stage, j.installOn])).toEqual([
       ["50001", "Purchasing", "2026-10-20"],
       ["50003", "Production", "2026-10-15"],
       ["50004", null, "2026-11-30"],
+      ["50005", "Complete", "2026-10-01"],
     ]);
+    expect(jobs[2].materials).toEqual(["Countertops - 4 weeks", "Lighting – 4 weeks"]);
     expect(jobs[0]).toMatchObject({ customer: "Sample, Pat", installConfirmed: true, stageSince: new Date("2026-10-10T14:00:00Z") });
 
     const db = await openDb("memory:");
     await saveSnapshot(db, parseSpecialOrders(readFileSync(path.join(__dirname, "fixtures", "special-orders.tsv"), "utf8")));
     await saveJobTreadSync(db, jobs);
     const board = await loadJobBoard(db, "2026-10-12");
-    expect(board.lastSync?.jobCount).toBe(3);
-    expect(board.jobs.map((j) => [j.jobNumber, j.risk])).toEqual([
-      ["50003", "in-production"],
-      ["50001", "warning"],
-      ["50004", "ok"],
+    expect(board.lastSync?.jobCount).toBe(4);
+    expect(board.jobs.map((j) => [j.jobNumber, j.risk, j.past])).toEqual([
+      ["50005", "in-production", true],
+      ["50003", "in-production", false],
+      ["50001", "warning", false],
+      ["50004", "ok", false],
     ]);
     expect(board.jobs.filter(isJobAtRisk).map((j) => j.jobNumber)).toEqual(["50001"]);
-    expect(board.jobs[1].manager).toMatchObject({ folders: 2, waitingOnStep: 5 });
-    expect(board.jobs[0].manager).toBeNull();
+    expect(board.jobs[2].manager).toMatchObject({ folders: 2, waitingOnStep: 5 });
+    expect(board.jobs[1].manager).toBeNull();
 
     // A second sync replaces the stored copy.
     await saveJobTreadSync(db, jobs.slice(0, 1));

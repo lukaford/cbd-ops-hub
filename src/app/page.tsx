@@ -2,19 +2,21 @@ import Link from "next/link";
 import { getDb } from "@/db";
 import { todayIn } from "@/lib/board";
 import { isJobAtRisk, loadJobBoard, type BoardJob } from "@/lib/jobBoard";
-import { STAGES, stageInfo } from "@/lib/jobtread/fields";
+import { MATERIALS, materialLabel, STAGES, stageInfo } from "@/lib/jobtread/fields";
 import { jobTreadConfigured, refreshFromJobTread } from "@/lib/jobtread/refresh";
 import { RISK_WINDOW_DAYS, type Risk } from "@/lib/manager/progress";
 import { STEPS } from "@/lib/manager/steps";
 import { refreshNow } from "./actions";
+import { AutoRefresh } from "./AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
 const TIME_ZONE = process.env.SHOP_TIME_ZONE ?? "America/New_York";
 const WINDOWS = [7, 14, 30] as const;
 const NO_STAGE = "none";
+const AUTO_REFRESH_MS = 3 * 60 * 1000;
 
-type Params = { window?: string; stage?: string; q?: string; ready?: string };
+type Params = { window?: string; stage?: string; q?: string; ready?: string; view?: string; material?: string };
 
 const RISK_CLASS: Record<Risk, string> = {
   "in-production": "ok",
@@ -57,7 +59,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const params = await searchParams;
   const db = await getDb();
   const today = todayIn(TIME_ZONE);
-  const refresh = await refreshFromJobTread(db, today);
+  const refresh = await refreshFromJobTread(db);
   const board = await loadJobBoard(db, today);
 
   if (!board.lastSync) {
@@ -79,27 +81,38 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     );
   }
 
-  const windowDays = WINDOWS.find((w) => String(w) === params.window) ?? (params.window === "all" ? null : 14);
-  const stageFilter = params.stage ?? null;
+  const past = params.view === "past";
+  const material = MATERIALS.includes(params.material ?? "") ? params.material! : null;
+  // A material tab lists every upcoming job with that material unless narrowed.
+  const windowDays = WINDOWS.find((w) => String(w) === params.window) ?? (params.window === "all" || material ? null : 14);
+  const stageFilter = past ? null : (params.stage ?? null);
   const showReady = params.ready === "1";
   const q = (params.q ?? "").trim().toLowerCase();
 
-  const atRisk = board.jobs.filter(isJobAtRisk);
+  const inView = board.jobs.filter((j) => j.past === past);
+  const materialCount = new Map<string, number>();
+  for (const j of inView) for (const m of j.materials) materialCount.set(m, (materialCount.get(m) ?? 0) + 1);
+  const scoped = material ? inView.filter((j) => j.materials.includes(material)) : inView;
+
+  const atRisk = scoped.filter(isJobAtRisk);
   const soonest = atRisk[0];
   const stageKey = (j: BoardJob) => (stageInfo(j.stage) ? j.stage! : NO_STAGE);
   const count = new Map<string, number>();
   const riskCount = new Map<string, number>();
-  for (const j of board.jobs) {
+  for (const j of scoped) {
     count.set(stageKey(j), (count.get(stageKey(j)) ?? 0) + 1);
     if (isJobAtRisk(j)) riskCount.set(stageKey(j), (riskCount.get(stageKey(j)) ?? 0) + 1);
   }
 
-  const list = board.jobs.filter((j) => {
+  const list = scoped.filter((j) => {
+    if (past) return matches(j, q);
     if (stageFilter) return stageKey(j) === stageFilter && matches(j, q);
-    if (!showReady && j.risk === "in-production") return false;
+    if (!showReady && !material && j.risk === "in-production") return false;
     if (windowDays !== null && j.daysToInstall !== null && j.daysToInstall > windowDays) return false;
     return matches(j, q);
   });
+  // Most recent first when looking back.
+  if (past) list.sort((a, b) => (b.installOn ?? "").localeCompare(a.installOn ?? ""));
 
   const href = (next: Partial<Params>) => {
     const merged = { ...params, ...next };
@@ -107,7 +120,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     return qs.size ? `/?${qs}` : "/";
   };
 
-  const queues = [...STAGES.map((s) => ({ key: s.name, name: s.name, dept: s.department })), { key: NO_STAGE, name: "Status 2.0 not set", dept: "Has an install date" }];
+  const queues = [...STAGES.map((s) => ({ key: s.name, name: s.name, dept: s.department })), { key: NO_STAGE, name: "Status 2.0 not set", dept: "No stage yet" }];
 
   return (
     <>
@@ -122,10 +135,32 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
           {refresh.error && <p className="small" style={{ color: "var(--crit)" }}>Couldn&apos;t refresh from JobTread: {refresh.error}</p>}
         </div>
         <form action={refreshNow}>
-          <button className="btn primary" type="submit">Refresh from JobTread</button>
+          <button className="btn primary" type="submit">Refresh now</button>
         </form>
+        <AutoRefresh everyMs={AUTO_REFRESH_MS} />
       </header>
 
+      <nav className="tabs" aria-label="View">
+        <Link className="tab" aria-current={!past ? "page" : undefined} href={href({ view: undefined, stage: undefined })}>
+          Upcoming <span className="num">{board.jobs.filter((j) => !j.past).length}</span>
+        </Link>
+        <Link className="tab" aria-current={past ? "page" : undefined} href={href({ view: "past", stage: undefined })}>
+          Past <span className="num">{board.jobs.filter((j) => j.past).length}</span>
+        </Link>
+      </nav>
+
+      <nav className="tabs" aria-label="Material type">
+        <Link className="tab" aria-current={!material ? "page" : undefined} href={href({ material: undefined })}>
+          All jobs <span className="num">{inView.length}</span>
+        </Link>
+        {MATERIALS.map((m) => (
+          <Link key={m} className="tab" aria-current={material === m ? "page" : undefined} href={href({ material: m })} title={m}>
+            {materialLabel(m)} <span className="num">{materialCount.get(m) ?? 0}</span>
+          </Link>
+        ))}
+      </nav>
+
+      {!past && (<>
       <section className={`alert${atRisk.length ? "" : " calm"}`}>
         <div className="big num">{atRisk.length}</div>
         {atRisk.length ? (
@@ -160,10 +195,14 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
           })}
         </div>
       </section>
+      </>)}
 
-      <form className="controls" method="get" action="/">
+      <form key={JSON.stringify(params)} className="controls" method="get" action="/">
         {stageFilter && <input type="hidden" name="stage" value={stageFilter} />}
+        {past && <input type="hidden" name="view" value="past" />}
+        {material && <input type="hidden" name="material" value={material} />}
         <input type="search" name="q" defaultValue={params.q ?? ""} placeholder="Search customer, job #, city" aria-label="Search" />
+        {!past && (<>
         <label>
           Installing within{" "}
           <select name="window" defaultValue={windowDays === null ? "all" : String(windowDays)}>
@@ -173,12 +212,15 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             <option value="all">any time</option>
           </select>
         </label>
-        <label>
-          <input type="checkbox" name="ready" value="1" defaultChecked={showReady} /> Show jobs already in production
-        </label>
+        {!material && (
+          <label>
+            <input type="checkbox" name="ready" value="1" defaultChecked={showReady} /> Show jobs already in production
+          </label>
+        )}
+        </>)}
         <button className="btn" type="submit">Apply</button>
         <span className="small">
-          {list.length} of {board.jobs.length} jobs shown{stageFilter ? " · stage filter on" : ""}
+          {list.length} of {scoped.length} {past ? "past" : "upcoming"} jobs shown{stageFilter ? " · stage filter on" : ""}
         </span>
       </form>
 
@@ -191,13 +233,14 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
               <th>Customer</th>
               <th>Status 2.0</th>
               <th>Production</th>
+              <th>Materials</th>
               <th>Manager folders</th>
             </tr>
           </thead>
           <tbody>
             {list.length === 0 && (
               <tr>
-                <td colSpan={6} className="empty">No jobs match. Widen the install window or clear the search.</td>
+                <td colSpan={7} className="empty">No jobs match. Try another tab, widen the install window or clear the search.</td>
               </tr>
             )}
             {list.map((j) => (
@@ -208,7 +251,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       </div>
 
       <footer>
-        {board.lastSync.jobCount} jobs from JobTread: every job with an active Status 2.0 stage or a Confirmed Install Date. Today is {shortDate(today)}. Folder
+        {board.lastSync.jobCount} jobs from JobTread: every sold job, plus any job with a Confirmed Install Date or Material Type. Past means installed or marked Complete. The board reloads by itself every few minutes. Today is {shortDate(today)}. Folder
         detail comes from the latest Manager paste when the job is in it.
       </footer>
     </>
@@ -257,7 +300,18 @@ function JobRow({ j, today }: { j: BoardJob; today: string }) {
         ) : (
           <span className="small">—</span>
         )}
-        {j.materialsOrdered === false && <div className="small">Materials not all ordered</div>}
+      </td>
+      <td>
+        {j.materials.length ? (
+          j.materials.map((m) => (
+            <div key={m} className="small">{materialLabel(m)}</div>
+          ))
+        ) : (
+          <span className="small">—</span>
+        )}
+        {j.orderBy && <div className="small">Order by {md(j.orderBy)}</div>}
+        {j.materialsOrdered === false && j.materials.length > 0 && <div className="small" style={{ color: "var(--crit)", fontWeight: 600 }}>Not all ordered</div>}
+        {j.materialsOrdered && <div className="small">All ordered</div>}
       </td>
       <td>
         {j.manager ? (

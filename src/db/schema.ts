@@ -98,5 +98,7 @@ export const jobtreadJobs = pgTable("jobtread_jobs", {
   drawerAssemblyOn: date("drawer_assembly_on", { mode: "string" }),
   finalQaOn: date("final_qa_on", { mode: "string" }),
   materialsOrdered: boolean("materials_ordered"),
+  materials: text("materials").array().notNull().default([]),
+  orderBy: date("order_by", { mode: "string" }),
   syncId: integer("sync_id").notNull().references(() => jobtreadSyncs.id),
 });
