@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000. To run it without a terminal, see [TESTING.md](TESTING.md).
 
 To read from JobTread, create a grant key in JobTread's API settings (ideally for a user with view-only access) and set it as `JOBTREAD_GRANT_KEY` in `.env.local` or the host's environment settings. Never commit it. The board refreshes from JobTread when it is more than 5 minutes old, or on **Refresh from JobTread**.
 
