@@ -28,6 +28,11 @@ export interface JobTreadJob {
 }
 
 const PAGE = 100;
+// JobTread refuses a query whose page sizes multiply past its limit ("413 Request
+// Entity Too Large"), and photos with their uploader cost far more than field values:
+// 100 jobs x 10 photos is refused, so photos are read in their own, smaller pages.
+const PHOTO_PAGE = 25;
+const PHOTOS_PER_JOB = 10;
 const BOARD_STAGES = [...ACTIVE_STAGES, COMPLETE];
 const SYNCED_STAGES = [...LEAD_STAGES, ...BOARD_STAGES];
 
@@ -90,8 +95,12 @@ export function toJob(node: any): JobTreadJob {
     materialsOrdered: typeof ordered === "boolean" ? ordered : null,
     materials: [...new Set(materials)],
     orderBy: isoDate(get(FIELD.orderBy)),
-    photographers: [...new Set<string>((node.files?.nodes ?? []).map((f: any) => f.createdByUser?.name).filter(Boolean))],
+    photographers: photographersOf(node),
   };
+}
+
+function photographersOf(node: any): string[] {
+  return [...new Set<string>((node.files?.nodes ?? []).map((f: any) => f.createdByUser?.name).filter(Boolean))];
 }
 
 // Every job with a Status 2.0: leads and unsold jobs for the sales tracker, and
@@ -120,16 +129,35 @@ export async function fetchJobTreadJobs(pave: Pave): Promise<JobTreadJob[]> {
               $: { size: 40, where: [["customField", "id"], "in", FIELD_IDS] },
               nodes: { value: {}, createdAt: {}, customField: { id: {} } },
             },
-            // Who took the first photos, to find each designer's jobs.
+          },
+        },
+      },
+    });
+    for (const node of res.organization.jobs.nodes) jobs.push(toJob(node));
+  }
+
+  // Who took the first photos, to find each designer's jobs.
+  const byId = new Map(jobs.map((j) => [j.jobtreadId, j]));
+  for (let i = 0; i < ids.length; i += PHOTO_PAGE) {
+    const res = await pave({
+      organization: {
+        $: { id: orgId },
+        jobs: {
+          $: { size: PHOTO_PAGE, where: ["id", "in", ids.slice(i, i + PHOTO_PAGE)] },
+          nodes: {
+            id: {},
             files: {
-              $: { size: 10, where: ["type", "like", "image/%"], sortBy: [{ field: "createdAt" }] },
+              $: { size: PHOTOS_PER_JOB, where: ["type", "like", "image/%"], sortBy: [{ field: "createdAt" }] },
               nodes: { createdByUser: { name: {} } },
             },
           },
         },
       },
     });
-    for (const node of res.organization.jobs.nodes) jobs.push(toJob(node));
+    for (const node of res.organization.jobs.nodes) {
+      const job = byId.get(node.id);
+      if (job) job.photographers = photographersOf(node);
+    }
   }
   // A job whose stage changed between the two reads.
   return jobs.filter((j) => j.stage !== null && SYNCED_STAGES.includes(j.stage));

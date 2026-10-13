@@ -96,6 +96,12 @@ describe("JobTread sync", () => {
     const { pave, sent } = fakePave();
     const jobs = await fetchJobTreadJobs(pave);
     expect(sent.every((q) => Object.keys(q).every((k) => ["customField", "currentGrant", "organization"].includes(k)))).toBe(true);
+    // JobTread answers 413 when 100 jobs ask for 10 photos each, so photos go in smaller pages.
+    for (const q of sent as any[]) {
+      const jobs = q.organization?.jobs;
+      if (jobs?.nodes.files) expect(jobs.$.size * jobs.nodes.files.$.size).toBeLessThanOrEqual(250);
+      if (jobs?.$.size > 25) expect(jobs.nodes.files).toBeUndefined();
+    }
     expect(jobs.map((j) => [j.jobNumber, j.stage, j.installOn])).toEqual([
       ["50001", "Purchasing", "2026-10-21"],
       ["50003", "Production", "2026-10-15"],
