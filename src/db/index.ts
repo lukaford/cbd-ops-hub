@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
+import { catchUpMigrations, isAlreadyExists } from "./catchUp";
 import * as schema from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -68,7 +69,13 @@ async function migratePglite(client: PGlite): Promise<Db> {
   const { drizzle } = await import("drizzle-orm/pglite");
   const { migrate } = await import("drizzle-orm/pglite/migrator");
   const db = drizzle(client, { schema });
-  await migrate(db, { migrationsFolder });
+  try {
+    await migrate(db, { migrationsFolder });
+  } catch (err) {
+    if (!isAlreadyExists(err)) throw err;
+    const n = await catchUpMigrations(client, migrationsFolder);
+    console.warn(`Local database already had part of its newest setup; finished ${n} step(s) and kept all data.`);
+  }
   return db as unknown as Db;
 }
 
