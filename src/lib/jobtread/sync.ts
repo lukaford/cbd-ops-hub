@@ -136,8 +136,19 @@ export async function fetchJobTreadJobs(pave: Pave): Promise<JobTreadJob[]> {
     for (const node of res.organization.jobs.nodes) jobs.push(toJob(node));
   }
 
-  // Who took the first photos, to find each designer's jobs.
+  // Who took the first photos, to find each designer's jobs. Only a hint, so a
+  // failure here never stops the board from refreshing.
   const byId = new Map(jobs.map((j) => [j.jobtreadId, j]));
+  try {
+    await readPhotographers(pave, orgId, ids, byId);
+  } catch (err) {
+    console.error("Couldn't read JobTread photo uploaders:", err instanceof Error ? err.message : err);
+  }
+  // A job whose stage changed between the two reads.
+  return jobs.filter((j) => j.stage !== null && SYNCED_STAGES.includes(j.stage));
+}
+
+async function readPhotographers(pave: Pave, orgId: string, ids: string[], byId: Map<string, JobTreadJob>) {
   for (let i = 0; i < ids.length; i += PHOTO_PAGE) {
     const res = await pave({
       organization: {
@@ -159,8 +170,6 @@ export async function fetchJobTreadJobs(pave: Pave): Promise<JobTreadJob[]> {
       if (job) job.photographers = photographersOf(node);
     }
   }
-  // A job whose stage changed between the two reads.
-  return jobs.filter((j) => j.stage !== null && SYNCED_STAGES.includes(j.stage));
 }
 
 // Replaces the stored copy with what JobTread says now.
