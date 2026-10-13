@@ -1,7 +1,7 @@
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@/db";
 import { folders, jobs, jobtreadJobs, jobtreadSyncs } from "@/db/schema";
-import { COMPLETE, stageInfo } from "./jobtread/fields";
+import { COMPLETE, LEAD_STAGES, stageInfo } from "./jobtread/fields";
 import { daysBetween, RISK_WINDOW_DAYS, type Risk } from "./manager/progress";
 
 export interface BoardJob {
@@ -27,9 +27,22 @@ export interface BoardJob {
   manager: { installOn: string | null; folders: number; waitingOnStep: number | null } | null;
 }
 
+export interface Lead {
+  jobtreadId: string;
+  jobNumber: string;
+  name: string;
+  customer: string;
+  city: string;
+  stage: string;
+  stageSince: Date | null;
+  apptOn: string | null;
+  createdAt: Date | null;
+}
+
 export interface JobBoard {
   lastSync: { id: number; createdAt: Date; jobCount: number } | null;
-  jobs: BoardJob[];
+  jobs: BoardJob[]; // sold: Sold through Complete
+  leads: Lead[]; // New Lead, Appt Set, Unsold
 }
 
 export function jobRisk(stage: string | null, installOn: string | null, today: string): Risk {
@@ -52,7 +65,20 @@ export function isJobAtRisk(j: BoardJob): boolean {
 
 export async function loadJobBoard(db: Db, today: string): Promise<JobBoard> {
   const [lastSync] = await db.select().from(jobtreadSyncs).orderBy(desc(jobtreadSyncs.id)).limit(1);
-  const rows = await db.select().from(jobtreadJobs).orderBy(asc(jobtreadJobs.installOn), asc(jobtreadJobs.jobNumber));
+  const all = await db.select().from(jobtreadJobs).orderBy(asc(jobtreadJobs.installOn), asc(jobtreadJobs.jobNumber));
+  const isLead = (r: (typeof all)[number]) => r.stage !== null && LEAD_STAGES.includes(r.stage);
+  const rows = all.filter((r) => !isLead(r));
+  const leads: Lead[] = all.filter(isLead).map((r) => ({
+    jobtreadId: r.jobtreadId,
+    jobNumber: r.jobNumber,
+    name: r.name,
+    customer: r.customer,
+    city: r.city,
+    stage: r.stage!,
+    stageSince: r.stageSince,
+    apptOn: r.apptOn,
+    createdAt: r.createdAt,
+  }));
 
   const numbers = rows.map((r) => r.jobNumber);
   const mgrJobs = numbers.length
@@ -70,6 +96,7 @@ export async function loadJobBoard(db: Db, today: string): Promise<JobBoard> {
 
   return {
     lastSync: lastSync ?? null,
+    leads,
     jobs: rows.map((r) => {
       const mgr = mgrByNumber.get(r.jobNumber);
       const fs = foldersByNumber.get(r.jobNumber) ?? [];

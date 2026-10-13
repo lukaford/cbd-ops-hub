@@ -68,3 +68,14 @@ describe("report filters", () => {
     expect(csv).toBe('Install date,Job #,Customer\r\n10/5/26,7,"Doe, Jane"');
   });
 });
+
+describe("unsold tracker views", () => {
+  it("sorts leads into upcoming, needs a result, and unsold", async () => {
+    const { viewOf } = await import("@/lib/leads");
+    const lead = (stage: string, apptOn: string | null) => ({ jobtreadId: "x", jobNumber: "1", name: "", customer: "", city: "", stage, stageSince: null, apptOn, createdAt: null });
+    expect(viewOf(lead("Appt Set", "2026-10-20"), "2026-10-13")).toBe("upcoming");
+    expect(viewOf(lead("Appt Set", "2026-10-01"), "2026-10-13")).toBe("result");
+    expect(viewOf(lead("Appt Set", null), "2026-10-13")).toBe("result");
+    expect(viewOf(lead("Unsold", "2026-10-01"), "2026-10-13")).toBe("unsold");
+  });
+});
