@@ -33,8 +33,8 @@ export function localDataDir(env: Record<string, string | undefined> = process.e
   return path.join(base, "pglite");
 }
 
-// The local database only holds copies (JobTread and the last Manager paste), so
-// if it is damaged it is set aside and rebuilt rather than stopping the app.
+// If the local database is damaged it is set aside (never deleted, since it can
+// hold paperwork and signatures) and a fresh one is started rather than stopping the app.
 async function connectLocal(dir: string): Promise<Db> {
   try {
     return await connectPglite(dir);
