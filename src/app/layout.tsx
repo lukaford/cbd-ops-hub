@@ -10,6 +10,10 @@ import { SESSION_COOKIE, validSession } from "@/lib/session";
 import { signOut } from "./login/actions";
 import "./globals.css";
 
+// Every page shows the signed-in account, so none is built ahead of time. Building
+// them would open the local database while the app may be running on it.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Install Readiness Board",
   description: "Every sold job by firm install date, read from JobTread, with folder detail from the Manager Special Orders table.",
