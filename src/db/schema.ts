@@ -92,6 +92,7 @@ export const jobtreadJobs = pgTable("jobtread_jobs", {
   stage: text("stage"),
   stageSince: timestamp("stage_since", { withTimezone: true }),
   installOn: date("install_on", { mode: "string" }),
+  installFieldOn: date("install_field_on", { mode: "string" }),
   installConfirmed: boolean("install_confirmed").notNull().default(false),
   cncCutOn: date("cnc_cut_on", { mode: "string" }),
   edgeBandingOn: date("edge_banding_on", { mode: "string" }),
@@ -101,4 +102,12 @@ export const jobtreadJobs = pgTable("jobtread_jobs", {
   materials: text("materials").array().notNull().default([]),
   orderBy: date("order_by", { mode: "string" }),
   syncId: integer("sync_id").notNull().references(() => jobtreadSyncs.id),
+});
+
+// Report setups people save from the Reports tab (filters, columns, sort as a query string).
+export const savedReports = pgTable("saved_reports", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  query: text("query").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

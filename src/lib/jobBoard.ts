@@ -13,6 +13,7 @@ export interface BoardJob {
   stage: string | null;
   stageSince: Date | null;
   installOn: string | null;
+  installFieldOn: string | null;
   installConfirmed: boolean;
   daysToInstall: number | null;
   production: { label: string; on: string | null }[];
@@ -82,6 +83,7 @@ export async function loadJobBoard(db: Db, today: string): Promise<JobBoard> {
         stage: r.stage,
         stageSince: r.stageSince,
         installOn: r.installOn,
+        installFieldOn: r.installFieldOn,
         installConfirmed: r.installConfirmed,
         daysToInstall: r.installOn ? daysBetween(today, r.installOn) : null,
         production: [

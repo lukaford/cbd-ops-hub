@@ -2,6 +2,7 @@ import type { Db } from "@/db";
 import { jobtreadJobs, jobtreadSyncs } from "@/db/schema";
 import type { Pave } from "./client";
 import { ACTIVE_STAGES, COMPLETE, FIELD, FIELD_IDS } from "./fields";
+import { installDateFromName } from "./titleDate";
 
 export interface JobTreadJob {
   jobtreadId: string;
@@ -11,7 +12,8 @@ export interface JobTreadJob {
   city: string;
   stage: string | null;
   stageSince: Date | null; // JobTread replaces the value when the stage changes, so its createdAt is when it was set
-  installOn: string | null;
+  installOn: string | null; // from the job name, else the Confirmed Install Date field
+  installFieldOn: string | null; // the Confirmed Install Date field, kept to flag disagreements
   installConfirmed: boolean;
   cncCutOn: string | null;
   edgeBandingOn: string | null;
@@ -69,7 +71,8 @@ export function toJob(node: any): JobTreadJob {
     city: node.location?.city ?? "",
     stage: typeof stage?.value === "string" && stage.value ? stage.value : null,
     stageSince: stage?.createdAt ? new Date(stage.createdAt) : null,
-    installOn: isoDate(get(FIELD.installOn)),
+    installOn: installDateFromName(node.name ?? "", node.createdAt) ?? isoDate(get(FIELD.installOn)),
+    installFieldOn: isoDate(get(FIELD.installOn)),
     installConfirmed: get(FIELD.installConfirmed) === true,
     cncCutOn: isoDate(get(FIELD.cncCutOn)),
     edgeBandingOn: isoDate(get(FIELD.edgeBandingOn)),
@@ -81,15 +84,10 @@ export function toJob(node: any): JobTreadJob {
   };
 }
 
-// Every sold job (Status 2.0 from Sold through Complete), plus any job with a
-// Confirmed Install Date or a Material Type, past or upcoming. Reads only.
+// Every sold job: Status 2.0 from Sold through Complete. Leads and unsold jobs
+// stay off, since their names carry an appointment date, not an install date. Reads only.
 export async function fetchJobTreadJobs(pave: Pave): Promise<JobTreadJob[]> {
-  const [staged, installing, withMaterials] = await Promise.all([
-    valueJobIds(pave, FIELD.status2, ["value", "in", BOARD_STAGES]),
-    valueJobIds(pave, FIELD.installOn),
-    valueJobIds(pave, FIELD.materials),
-  ]);
-  const ids = [...new Set([...staged, ...installing, ...withMaterials])];
+  const ids = [...new Set(await valueJobIds(pave, FIELD.status2, ["value", "in", BOARD_STAGES]))];
   if (!ids.length) return [];
 
   const { currentGrant } = await pave({ currentGrant: { organization: { id: {} } } });
@@ -106,6 +104,7 @@ export async function fetchJobTreadJobs(pave: Pave): Promise<JobTreadJob[]> {
             id: {},
             number: {},
             name: {},
+            createdAt: {},
             location: { city: {}, account: { name: {} } },
             customFieldValues: {
               $: { size: 40, where: [["customField", "id"], "in", FIELD_IDS] },
@@ -117,8 +116,8 @@ export async function fetchJobTreadJobs(pave: Pave): Promise<JobTreadJob[]> {
     });
     for (const node of res.organization.jobs.nodes) jobs.push(toJob(node));
   }
-  // Leads and unsold jobs stay off even if someone filled in a date or material.
-  return jobs.filter((j) => (j.stage ? BOARD_STAGES.includes(j.stage) : Boolean(j.installOn || j.materials.length)));
+  // A job whose stage changed between the two reads.
+  return jobs.filter((j) => j.stage !== null && BOARD_STAGES.includes(j.stage));
 }
 
 // Replaces the stored copy with what JobTread says now.
