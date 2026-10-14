@@ -5,3 +5,6 @@ node_modules/
 !.env.example
 next-env.d.ts
 *.tsbuildinfo
+
+# Private files kept beside the app, never in the repository (prices, customer data)
+private/

@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { getDb } from "@/db";
 import { activeTemplates, loadPacket, reviewLoaded } from "@/lib/paperwork";
 import { PACKET_LABELS, packetTitle } from "@/lib/forms/naming";
-import { addIssue, addSheet, deleteDraft, deleteFile, removeDoc, resolveIssue, saveNotes, startPacket, submitPacket, uploadFiles } from "../actions";
+import { addIssue, addRoom, addSheet, deleteDraft, deleteFile, removeDoc, resolveIssue, saveNotes, startPacket, submitPacket, uploadFiles } from "../actions";
+import { inScope, visibleJobs } from "@/lib/auth/current";
+import { BUILTIN_FORMS } from "@/lib/forms/native";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +14,14 @@ const money = (n: number) => n.toLocaleString("en-US", { style: "currency", curr
 export default async function PacketPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
   const db = await getDb();
   const lp = await loadPacket(db, Number((await params).id));
-  if (!lp) notFound();
+  if (!lp || !inScope(await visibleJobs(), lp.packet.jobNumber)) notFound();
   const sp = await searchParams;
   const { packet: p } = lp;
   const draft = p.status === "draft";
   const templates = draft ? await activeTemplates(db) : [];
+  const builtins = templates.filter((t) => t.builtinKey);
+  const uploaded = templates.filter((t) => !t.builtinKey);
+  const roomNames = [...new Set(BUILTIN_FORMS.map((f) => f.room))];
   const review = reviewLoaded(lp);
   const total = review.rooms.reduce((s, r) => s + (r.salePrice ?? 0), 0);
   const openIssues = lp.issues.filter((i) => !i.resolvedAt);
@@ -105,26 +110,49 @@ export default async function PacketPage({ params, searchParams }: { params: Pro
             ))}
           </tbody>
         </table>
-        {draft && templates.length > 0 && (
-          <form action={addSheet} className="controls">
-            <input type="hidden" name="packetId" value={p.id} />
-            <select name="templateId" aria-label="Form" required>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <input name="title" placeholder="Room name, e.g. Master Closet" aria-label="Room name" />
-            <button className="btn primary" type="submit">
-              Add sheet
-            </button>
-          </form>
-        )}
-        {draft && templates.length === 0 && (
-          <p className="muted">
-            No templates yet. <Link href="/paperwork/templates">Upload them</Link>.
-          </p>
+        {lp.pricesMissing.length > 0 && <p className="msg err">Prices are not loaded for {lp.pricesMissing.join(", ")}, so its totals show $0. An admin can load them on Paperwork → Prices.</p>}
+        {draft && (
+          <>
+            <form action={addRoom} className="controls">
+              <input type="hidden" name="packetId" value={p.id} />
+              <strong>Add a room:</strong>
+              <select name="room" aria-label="Room type" required>
+                {roomNames.map((r) => (
+                  <option key={r}>{r}</option>
+                ))}
+              </select>
+              <input name="title" placeholder="Room name, e.g. Master Closet" aria-label="Room name" />
+              <button className="btn primary" type="submit">
+                Add work sheet + detail sheet
+              </button>
+            </form>
+            <form action={addSheet} className="controls">
+              <input type="hidden" name="packetId" value={p.id} />
+              <span>Or one sheet:</span>
+              <select name="templateId" aria-label="Form" required>
+                <optgroup label="Built-in forms">
+                  {builtins.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </optgroup>
+                {uploaded.length > 0 && (
+                  <optgroup label="Uploaded templates">
+                    {uploaded.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} (uploaded)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              <input name="title" placeholder="Room name" aria-label="Room name" />
+              <button className="btn" type="submit">
+                Add sheet
+              </button>
+            </form>
+          </>
         )}
       </section>
 

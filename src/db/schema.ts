@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, customType, date, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({ dataType: () => "bytea" });
 
@@ -132,6 +132,9 @@ export const formTemplates = pgTable("form_templates", {
   fileName: text("file_name").notNull(),
   file: bytea("file").notNull(),
   model: jsonb("model").notNull(),
+  // Built-in forms (src/lib/forms/native) have no uploaded file: the form comes from
+  // the code by this key, and the row only gives paperwork something to point at.
+  builtinKey: text("builtin_key").unique(),
   archived: boolean("archived").notNull().default(false),
   uploadedByUserId: integer("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
@@ -162,8 +165,44 @@ export const paperworkDocs = pgTable("paperwork_docs", {
   title: text("title").notNull().default(""),
   position: integer("position").notNull().default(0),
   values: jsonb("values").notNull().default({}),
+  // A built-in work sheet's prices, copied in when the paperwork is submitted so a
+  // later price change never alters what the customer signed. Null while a draft.
+  prices: jsonb("prices"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Every answer on a built-in sheet, one row each, rewritten whenever the sheet is
+// saved: the job's paperwork as plain data for reports and other departments.
+export const paperworkAnswers = pgTable(
+  "paperwork_answers",
+  {
+    docId: integer("doc_id").notNull().references(() => paperworkDocs.id, { onDelete: "cascade" }),
+    packetId: integer("packet_id").notNull().references(() => paperworkPackets.id, { onDelete: "cascade" }),
+    jobNumber: text("job_number").notNull(),
+    form: text("form").notNull(), // built-in key, e.g. "closet-detail"
+    room: text("room").notNull().default(""), // the sheet's title, e.g. "Master Closet"
+    field: text("field").notNull(), // field key, or "<sheet>!<cell>" on a work sheet
+    section: text("section").notNull().default(""),
+    label: text("label").notNull(),
+    value: text("value").notNull(),
+    num: doublePrecision("num"),
+  },
+  (t) => [primaryKey({ columns: [t.docId, t.field] }), index("paperwork_answers_job_idx").on(t.jobNumber), index("paperwork_answers_field_idx").on(t.form, t.field)],
+);
+
+// Work sheet prices for the built-in forms. They are company pricing, so they are
+// loaded by an admin (from the work sheet files) and never kept in the code.
+export const formPrices = pgTable(
+  "form_prices",
+  {
+    form: text("form").notNull(), // "closet-worksheet"
+    cell: text("cell").notNull(), // "<sheet>!<cell>" or "__P!A<n>" for a number inside a formula
+    value: jsonb("value").notNull(), // number, or printed text that includes a price
+    updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.form, t.cell] })],
+);
 
 // Photos or scans added to a packet, such as hand-drawn grids.
 export const paperworkFiles = pgTable("paperwork_files", {

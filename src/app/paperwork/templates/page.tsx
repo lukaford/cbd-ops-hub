@@ -3,6 +3,8 @@ import { asc, desc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { formTemplates } from "@/db/schema";
 import { templateColumns } from "@/lib/paperwork";
+import { builtinForm, ensureBuiltinTemplates, isNativeKind } from "@/lib/forms/native";
+import { allFields } from "@/lib/forms/native/detailSheets";
 import type { WorkbookModel } from "@/lib/forms/sheetModel";
 import type { PdfFormModel } from "@/lib/forms/pdfForm";
 import { archiveTemplate, uploadTemplates } from "../actions";
@@ -12,6 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function TemplatesPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const db = await getDb();
+  await ensureBuiltinTemplates(db);
   const rows = await db.select(templateColumns).from(formTemplates).orderBy(asc(formTemplates.archived), asc(formTemplates.position), desc(formTemplates.uploadedAt));
   const active = rows.filter((t) => !t.archived);
   const old = rows.filter((t) => t.archived);
@@ -24,6 +27,10 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
             <Link href="/paperwork">Paperwork</Link> · Templates
           </div>
           <h1>Form templates</h1>
+          <p>
+            The closet, pantry, office, wall bed, garage and laundry forms are built into the app and need nothing uploaded; their prices live on{" "}
+            <Link href="/paperwork/prices">Prices</Link>. Upload a file here only for a form the app doesn&apos;t have yet.
+          </p>
           <p>
             Upload the blank work sheets (.xlsx) and fillable detail sheets (.pdf). Start file names with their number, like &quot;01. Closet Work Sheet.xlsx&quot; and &quot;01a. Closet Detail Sheet.pdf&quot;, so each
             packet lists rooms in that order. Uploading a newer copy replaces the old one for new paperwork. Templates stay in this app&apos;s database only.
@@ -63,14 +70,16 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
                 <td className="mono">{(t.position / 100).toFixed(1)}</td>
                 <td>{t.name}</td>
                 <td>{t.room}</td>
-                <td>{t.kind === "worksheet" ? "Work sheet" : "Detail sheet"}</td>
+                <td>{(/worksheet/.test(t.kind) ? "Work sheet" : "Detail sheet") + (isNativeKind(t.kind) ? " (built in)" : "")}</td>
                 <td>{t.revision}</td>
                 <td className="muted">
-                  {t.kind === "worksheet"
+                  {isNativeKind(t.kind)
+                    ? contents(t.builtinKey)
+                    : t.kind === "worksheet"
                     ? `${(t.model as WorkbookModel).sheets.length} tabs, ${(t.model as WorkbookModel).sheets.reduce((n, s) => n + Object.values(s.cells).filter((c) => c.input).length, 0)} fill-in cells`
                     : `${(t.model as PdfFormModel).pages.length} page, ${(t.model as PdfFormModel).fields.length} fields`}
                 </td>
-                <td>{t.uploadedAt.toLocaleDateString("en-US")}</td>
+                <td>{isNativeKind(t.kind) ? "In the app" : t.uploadedAt.toLocaleDateString("en-US")}</td>
                 <td>
                   <form action={archiveTemplate}>
                     <input type="hidden" name="id" value={t.id} />
@@ -99,4 +108,11 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
       )}
     </>
   );
+}
+
+function contents(key: string | null): string {
+  const f = builtinForm(key);
+  if (!f) return "";
+  if (f.kind === "detail") return `${f.sections.length} sections, ${allFields(f).length} questions`;
+  return `${f.layout.sections.length} sections, ${f.layout.sections.reduce((n, s) => n + s.rows.length, 0)} lines`;
 }

@@ -11,7 +11,7 @@ PC today, hosted Postgres (Neon) later. Same tables either way; migrations in
 | Jobs and production | `jobtread_jobs`, `jobtread_syncs` | JobTread (read-only copy, rebuilt each sync) |
 | Folder steps | `jobs`, `folders`, `folder_steps`, `special_orders`, `import_batches` | Manager Special Orders paste (rebuilt each paste) |
 | Reports | `saved_reports` | The hub |
-| Sales paperwork | `form_templates`, `paperwork_packets`, `paperwork_docs`, `paperwork_files`, `paperwork_signatures`, `paperwork_issues` | The hub |
+| Sales paperwork | `form_templates`, `paperwork_packets`, `paperwork_docs`, `paperwork_answers`, `form_prices`, `paperwork_files`, `paperwork_signatures`, `paperwork_issues` | The hub |
 | **Accounts** | `users`, `staff_categories`, `notifications`, `designer_requests`, `user_categories`, `job_assignments`, `clients`, `client_jobs`, `auth_sessions`, `auth_tokens`, `audit_events` | The hub |
 
 Jobs are joined by **job number**, never by a row id, because the JobTread and
@@ -36,7 +36,27 @@ erDiagram
   clients ||--o{ paperwork_signatures : "signer_client_id"
   users ||--o{ paperwork_issues : "created / resolved by"
   users ||--o{ form_templates : "uploaded_by_user_id"
+  paperwork_docs ||--o{ paperwork_answers : "one row per answer"
+  users ||--o{ form_prices : "updated_by_user_id"
 ```
+
+### Built-in sales forms
+
+The closet, pantry, office, wall bed, garage and laundry detail sheets and the
+five work sheets are built into the app (`src/lib/forms/native`), so nothing
+has to be uploaded. Each has a `form_templates` row found by `builtin_key`.
+Every save writes the form's answers to `paperwork_answers` as one row per
+question (job number, room, section, label, value, and a number when there is
+one), so answers can be searched and reported across jobs.
+
+Work sheet prices are not in the code, because the repository is public. They
+live in `form_prices` (form, cell, value), loaded on Paperwork → Prices from
+the company work sheet files, or on first start from a private
+`private/form-prices.json` beside the app (ignored by git; `FORM_PRICES_FILE`
+points elsewhere). Submitting a packet copies the prices into
+`paperwork_docs.prices`, so signed paperwork keeps the prices it was signed
+with. `scripts/build-worksheets.ts` turns a new revision of the work sheet
+files into the built-in forms and a prices file.
 
 ## Staff accounts and categories
 

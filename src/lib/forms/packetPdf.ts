@@ -9,6 +9,7 @@ import { numToCol, splitAddr } from "./formula";
 import { formatValue } from "./numFmt";
 import type { SheetValues } from "./review";
 import { evaluateSheets } from "./review";
+import { answerText, isBlank, type Answers, type DetailFormDef } from "./native/types";
 
 const LETTER: [number, number] = [612, 792];
 
@@ -145,10 +146,93 @@ function drawSheet(page: PDFPage, f: Fonts, sheet: SheetModel, styles: CellStyle
 export async function appendWorksheet(out: PDFDocument, f: Fonts, model: WorkbookModel, values: SheetValues) {
   const computed = evaluateSheets(model, values);
   for (const sheet of model.sheets) {
+    if (sheet.area.r2 < sheet.area.r1) continue; // hidden helper sheet (built-in work sheet parameters)
     const W = sheet.colWidths.reduce((a, b) => a + b, 0);
     const H = sheet.rowHeights.reduce((a, b) => a + b, 0);
     const page = out.addPage(W > H ? [LETTER[1], LETTER[0]] : LETTER);
     drawSheet(page, f, sheet, model.styles, computed[sheet.name] ?? {}, 30);
+  }
+}
+
+// A built-in detail sheet, printed as a tidy form: each section with its answers.
+export function appendNativeDetail(out: PDFDocument, f: Fonts, def: DetailFormDef, values: Answers, title: string) {
+  const [pw, ph] = LETTER;
+  const left = 36;
+  const width = pw - left * 2;
+  let page = out.addPage(LETTER);
+  let y = ph - 40;
+  const newPage = () => {
+    page = out.addPage(LETTER);
+    y = ph - 40;
+    page.drawText(pdfSafe(`${def.name} (continued): ${title}`), { x: left, y, size: 10, font: f.bold });
+    y -= 20;
+  };
+  const need = (h: number) => {
+    if (y - h < 36) newPage();
+  };
+  page.drawText(pdfSafe(def.name.toUpperCase()), { x: left, y, size: 16, font: f.bold });
+  const rev = pdfSafe(def.revision);
+  page.drawText(rev, { x: pw - left - f.regular.widthOfTextAtSize(rev, 9), y: y + 4, size: 9, font: f.regular });
+  y -= 16;
+  page.drawText(pdfSafe(title), { x: left, y, size: 11, font: f.regular, color: rgb(0.3, 0.3, 0.3) });
+  y -= 14;
+  if (def.note) {
+    for (const line of wrapLines(f.italic, 8.5, pdfSafe(def.note), width)) {
+      page.drawText(line, { x: left, y, size: 8.5, font: f.italic });
+      y -= 11;
+    }
+  }
+  y -= 4;
+  const size = 9;
+  const colW = width / 2;
+  for (const s of def.sections) {
+    const answered = s.fields.filter((fl) => !isBlank(values[fl.key]) || (s.key === "site" && fl.type === "choice"));
+    need(18 + (s.note ? 12 : 0) + (answered.length ? 13 : 12));
+    page.drawRectangle({ x: left, y: y - 4, width, height: 15, color: rgb(0.9, 0.92, 0.91) });
+    page.drawText(pdfSafe(s.title.toUpperCase()), { x: left + 4, y, size: 9.5, font: f.bold });
+    y -= 17;
+    if (s.note) {
+      for (const line of wrapLines(f.italic, 8, pdfSafe(s.note), width - 8)) {
+        need(11);
+        page.drawText(line, { x: left + 4, y, size: 8, font: f.italic, color: rgb(0.25, 0.25, 0.25) });
+        y -= 10;
+      }
+      y -= 2;
+    }
+    if (!answered.length) {
+      page.drawText("-", { x: left + 4, y, size, font: f.regular, color: rgb(0.5, 0.5, 0.5) });
+      y -= 14;
+      continue;
+    }
+    // Two answers per line; long ones (notes, wide fields) take the whole line.
+    let col = 0;
+    for (const fl of answered) {
+      const text = isBlank(values[fl.key]) ? "NOT ANSWERED" : answerText(fl, values[fl.key]);
+      const wide = fl.wide || fl.type === "textarea" || f.regular.widthOfTextAtSize(`${fl.label}: ${text}`, size) > colW - 10;
+      if (wide && col === 1) {
+        y -= 13;
+        col = 0;
+      }
+      const w = wide ? width - 8 : colW - 10;
+      const labelText = pdfSafe(`${fl.label}: `);
+      const lw = f.bold.widthOfTextAtSize(labelText, size);
+      const lines = lw + f.regular.widthOfTextAtSize(pdfSafe(text), size) <= w ? [pdfSafe(text)] : wrapLines(f.regular, size, pdfSafe(text), w - 10);
+      need(13 * (lines.length + (lines.length > 1 ? 1 : 0)));
+      const x = left + 4 + (wide ? 0 : col * colW);
+      page.drawText(labelText, { x, y, size, font: f.bold });
+      if (lines.length === 1) page.drawText(lines[0], { x: x + lw, y, size, font: f.regular, color: text === "NOT ANSWERED" ? rgb(0.75, 0.1, 0.1) : rgb(0, 0, 0) });
+      else
+        for (const line of lines) {
+          y -= 12;
+          page.drawText(line, { x: x + 10, y, size, font: f.regular });
+        }
+      if (wide || col === 1) {
+        y -= 13;
+        col = 0;
+      } else col = 1;
+    }
+    if (col === 1) y -= 13;
+    y -= 4;
   }
 }
 
@@ -159,6 +243,7 @@ export interface PacketPdfInput {
   docs: (
     | { kind: "worksheet"; title: string; model: WorkbookModel; values: SheetValues }
     | { kind: "detail"; title: string; template: Uint8Array; values: FieldValues }
+    | { kind: "native"; title: string; def: DetailFormDef; values: Answers }
   )[];
   notes: string;
   files: { name: string; contentType: string; data: Uint8Array }[];
@@ -206,6 +291,7 @@ export async function buildPacketPdf(input: PacketPdfInput): Promise<Uint8Array>
 
   for (const d of input.docs) {
     if (d.kind === "worksheet") await appendWorksheet(out, f, d.model, d.values);
+    else if (d.kind === "native") appendNativeDetail(out, f, d.def, d.values, d.title);
     else {
       const filled = await fillPdfForm(d.template, d.values, { flatten: true });
       const pages = await out.copyPages(filled, filled.getPageIndices());

@@ -10,6 +10,9 @@ import { evaluateSheets, reviewPacket, worksheetHeaderCells, detailHeaderFields,
 import type { FieldValues } from "./forms/pdfForm";
 import { toSerial } from "./forms/sheetModel";
 import { packetFileName, packetTitle } from "./forms/naming";
+import { builtinForm, ensureBuiltinTemplates, loadPrices, NATIVE_KINDS, pricedModel, type WorksheetFormDef } from "./forms/native";
+import type { DetailFormDef, Answers } from "./forms/native/types";
+import type { Prices } from "./forms/native/worksheetBuild";
 
 export type Packet = typeof paperworkPackets.$inferSelect;
 export type Template = Omit<typeof formTemplates.$inferSelect, "file">;
@@ -24,12 +27,14 @@ export const templateColumns = {
   position: formTemplates.position,
   fileName: formTemplates.fileName,
   model: formTemplates.model,
+  builtinKey: formTemplates.builtinKey,
   archived: formTemplates.archived,
   uploadedByUserId: formTemplates.uploadedByUserId,
   uploadedAt: formTemplates.uploadedAt,
 };
 
 export async function activeTemplates(db: Db): Promise<Template[]> {
+  await ensureBuiltinTemplates(db);
   return db.select(templateColumns).from(formTemplates).where(eq(formTemplates.archived, false)).orderBy(asc(formTemplates.position), asc(formTemplates.name));
 }
 
@@ -84,10 +89,17 @@ export async function createPacket(db: Db, p: NewPacket): Promise<number> {
 }
 
 // Fills the header of a new sheet (client, job #, room, designer, date) from the job.
-export function prefillValues(template: Template, packet: Packet, title: string, today = new Date()): SheetValues | FieldValues {
-  if (template.kind === "worksheet") {
-    const model = template.model as WorkbookModel;
-    const cells = worksheetHeaderCells(model);
+export function prefillValues(template: Template, packet: Packet, title: string, today = new Date()): SheetValues | FieldValues | Answers {
+  const native = builtinForm(template.builtinKey);
+  if (native?.kind === "detail") {
+    const from = { customer: packet.customer, jobNumber: packet.jobNumber, room: title, designer: packet.designer, date: today.toISOString().slice(0, 10) };
+    const v: Answers = {};
+    for (const s of native.sections) for (const f of s.fields) if (f.prefill && from[f.prefill]) v[f.key] = from[f.prefill];
+    return v;
+  }
+  if (template.kind === "worksheet" || native?.kind === "worksheet") {
+    const model = native?.kind === "worksheet" ? native.model : (template.model as WorkbookModel);
+    const cells = native?.kind === "worksheet" ? (native.layout.header as Record<string, { sheet: string; addr: string }>) : worksheetHeaderCells(model);
     const v: SheetValues = {};
     const put = (k: string, val: string | number) => {
       const c = cells[k];
@@ -129,11 +141,27 @@ export async function addDoc(db: Db, packetId: number, templateId: number, title
 
 export interface LoadedDoc extends Doc {
   template: Template;
+  // Built-in forms: the form from the code, and for work sheets the priced workbook.
+  native?: { def: DetailFormDef } | { def: WorksheetFormDef; model: WorkbookModel; prices: Prices; frozen: boolean };
+}
+
+// Built-in work sheets use the prices frozen on the doc at submission, otherwise today's.
+export async function attachNative<T extends Doc & { template: Template }>(db: Db, docs: T[]): Promise<(T & Pick<LoadedDoc, "native">)[]> {
+  const needPrices = docs.some((d) => d.template.kind === NATIVE_KINDS.worksheet && !d.prices);
+  const current = needPrices ? await loadPrices(db) : {};
+  return docs.map((d) => {
+    const def = builtinForm(d.template.builtinKey);
+    if (!def) return d;
+    if (def.kind === "detail") return { ...d, native: { def } };
+    const prices = (d.prices as Prices | null) ?? current[def.key] ?? {};
+    return { ...d, native: { def, model: pricedModel(def, prices), prices, frozen: Boolean(d.prices) } };
+  });
 }
 
 export interface LoadedPacket {
   packet: Packet;
   docs: LoadedDoc[];
+  pricesMissing: string[]; // built-in work sheets in this packet with no prices loaded
   files: { id: number; kind: string; name: string; contentType: string; createdAt: Date; hash: string }[];
   signatures: (typeof paperworkSignatures.$inferSelect & { current: boolean })[];
   issues: (typeof paperworkIssues.$inferSelect)[];
@@ -150,11 +178,17 @@ export function orderDocs<T extends { position: number; template: { position: nu
   return [...docs].sort((a, b) => a.template.position - b.template.position || a.position - b.position);
 }
 
-export function contentHash(packet: Pick<Packet, "jobNumber" | "notes">, docs: { id: number; templateId: number; title: string; values: unknown }[], fileHashes: string[]): string {
+export function contentHash(
+  packet: Pick<Packet, "jobNumber" | "notes">,
+  docs: { id: number; templateId: number; title: string; values: unknown; prices?: unknown }[],
+  fileHashes: string[],
+): string {
   const body = JSON.stringify({
     job: packet.jobNumber,
     notes: packet.notes.trim(),
-    docs: docs.map((d) => [d.templateId, d.title, d.values]),
+    // A built-in work sheet's prices are part of what is signed.
+    // Sorted, since the database may hand the same prices back in another order.
+    docs: docs.map((d) => (d.prices ? [d.templateId, d.title, d.values, Object.entries(d.prices).sort(([a], [b]) => (a < b ? -1 : 1))] : [d.templateId, d.title, d.values])),
     files: fileHashes,
   });
   return createHash("sha256").update(body).digest("hex");
@@ -167,7 +201,7 @@ export async function loadPacket(db: Db, id: number): Promise<LoadedPacket | nul
   const templateIds = [...new Set(docRows.map((d) => d.templateId))];
   const templates = templateIds.length ? await db.select(templateColumns).from(formTemplates).where(inArray(formTemplates.id, templateIds)) : [];
   const byId = new Map(templates.map((t) => [t.id, t]));
-  const docs = orderDocs(docRows.map((d) => ({ ...d, template: byId.get(d.templateId)! })).filter((d) => d.template));
+  const docs = await attachNative(db, orderDocs(docRows.map((d) => ({ ...d, template: byId.get(d.templateId)! })).filter((d) => d.template)));
   const fileRows = await db.select().from(paperworkFiles).where(eq(paperworkFiles.packetId, id)).orderBy(asc(paperworkFiles.id));
   const files = fileRows.map((f) => ({
     id: f.id,
@@ -177,7 +211,11 @@ export async function loadPacket(db: Db, id: number): Promise<LoadedPacket | nul
     createdAt: f.createdAt,
     hash: createHash("sha256").update(f.data).digest("hex"),
   }));
-  const hash = contentHash(packet, docs, files.map((f) => f.hash));
+  const hash = contentHash(
+    packet,
+    docs.map((d) => (d.native && "model" in d.native ? { ...d, prices: d.native.prices } : d)),
+    files.map((f) => f.hash),
+  );
   const sigs = await db.select().from(paperworkSignatures).where(eq(paperworkSignatures.packetId, id)).orderBy(asc(paperworkSignatures.signedAt));
   const issues = await db.select().from(paperworkIssues).where(eq(paperworkIssues.packetId, id)).orderBy(asc(paperworkIssues.createdAt));
   const versions = await db
@@ -194,6 +232,7 @@ export async function loadPacket(db: Db, id: number): Promise<LoadedPacket | nul
   return {
     packet,
     docs,
+    pricesMissing: docs.filter((d) => d.native && "model" in d.native && !Object.keys(d.native.prices).length).map((d) => d.template.name),
     files,
     signatures: sigs.map((s) => ({ ...s, current: s.contentHash === hash })),
     issues,
@@ -206,11 +245,13 @@ export async function loadPacket(db: Db, id: number): Promise<LoadedPacket | nul
 }
 
 export function packetDocs(lp: LoadedPacket): PacketDoc[] {
-  return lp.docs.map((d) =>
-    d.template.kind === "worksheet"
+  return lp.docs.map((d): PacketDoc => {
+    if (d.native && "model" in d.native) return { id: d.id, kind: "worksheet", title: d.title, room: d.template.room, model: d.native.model, values: d.values as SheetValues };
+    if (d.native) return { id: d.id, kind: "native", title: d.title, room: d.template.room, def: d.native.def as DetailFormDef, values: d.values as Answers };
+    return d.template.kind === "worksheet"
       ? { id: d.id, kind: "worksheet", title: d.title, room: d.template.room, model: d.template.model as WorkbookModel, values: d.values as SheetValues }
-      : { id: d.id, kind: "detail", title: d.title, room: d.template.room, model: d.template.model as DetailModel, values: d.values as FieldValues },
-  );
+      : { id: d.id, kind: "detail", title: d.title, room: d.template.room, model: d.template.model as DetailModel, values: d.values as FieldValues };
+  });
 }
 
 export function reviewLoaded(lp: LoadedPacket) {

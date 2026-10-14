@@ -80,6 +80,7 @@ const ROUTES: [prefix: string, anyOf: Permission[]][] = [
   // The editors load blank forms from here, so whoever fills paperwork can read them.
   ["/paperwork/templates/", ["pricebook.manage", "paperwork.write", "paperwork.review"]],
   ["/paperwork/templates", ["pricebook.manage"]],
+  ["/paperwork/prices", ["pricebook.manage"]],
   ["/paperwork", ["paperwork.write", "paperwork.review"]],
   ["/catalog", ["pricebook.view", "pricebook.manage"]],
   ["/no-access", []],

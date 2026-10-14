@@ -5,7 +5,9 @@ import { paperworkPackets } from "@/db/schema";
 import { activeTemplates, findJobs } from "@/lib/paperwork";
 import { keepJobTreadFresh } from "@/lib/jobtread/refresh";
 import { PACKET_LABELS, packetTitle } from "@/lib/forms/naming";
-import { inScope, visibleJobs } from "@/lib/auth/current";
+import { currentStaff, inScope, visibleJobs } from "@/lib/auth/current";
+import { can } from "@/lib/auth/permissions";
+import { loadPrices, WORKSHEETS } from "@/lib/forms/native";
 import { startPacket } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +24,10 @@ export default async function PaperworkPage({ searchParams }: { searchParams: Pr
     activeTemplates(db),
     q ? findJobs(db, q) : Promise.resolve([]),
   ]);
+  const staff = await currentStaff();
+  const managesPrices = !staff || can(staff.access, "pricebook.manage");
+  const prices = await loadPrices(db);
+  const unpriced = WORKSHEETS.filter((w) => !prices[w.key]);
   const packets = allPackets.filter((p) => inScope(scope, p.jobNumber)).slice(0, 200);
   const latest = new Map<string, number>();
   for (const p of packets) if (p.status === "submitted") latest.set(p.jobNumber, Math.max(latest.get(p.jobNumber) ?? 0, p.version));
@@ -32,19 +38,34 @@ export default async function PaperworkPage({ searchParams }: { searchParams: Pr
         <div>
           <div className="label">Closets by Design · Sales</div>
           <h1>Paperwork</h1>
-          <p>Fill each room&apos;s work sheet and detail sheet on screen, attach grids, collect signatures, and download one PDF per submission. Nothing is sent to JobTread.</p>
+          <p>
+            Fill each room&apos;s work sheet and detail sheet as in-app forms, attach grids, collect signatures, and download one PDF per submission. Every answer is saved to the job. Nothing is sent to
+            JobTread.
+          </p>
         </div>
-        <Link className="btn" href="/paperwork/templates">
-          Templates ({templates.length})
-        </Link>
+        {managesPrices && (
+          <div className="actions">
+            <Link className="btn" href="/paperwork/prices">
+              Prices
+            </Link>
+            <Link className="btn" href="/paperwork/templates">
+              Forms ({templates.length})
+            </Link>
+          </div>
+        )}
       </header>
 
-      {templates.length === 0 && (
+      {unpriced.length > 0 && (
         <div className="banner">
-          <p>Upload the blank work sheets (.xlsx) and detail sheets (fillable .pdf) first.</p>
-          <Link className="btn primary" href="/paperwork/templates">
-            Upload templates
-          </Link>
+          <p>
+            Work sheet prices are not loaded for {unpriced.map((w) => w.room).join(", ")}, so those totals show $0.
+            {managesPrices ? " Load them from the company work sheet files." : " Ask an admin to load them."}
+          </p>
+          {managesPrices && (
+            <Link className="btn primary" href="/paperwork/prices">
+              Load prices
+            </Link>
+          )}
         </div>
       )}
       {sp.error && <p className="msg err">{sp.error}</p>}
