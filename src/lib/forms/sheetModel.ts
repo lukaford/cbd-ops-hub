@@ -25,6 +25,7 @@ export interface SheetCell {
   v?: Value;
   f?: string; // formula without "="
   input?: boolean;
+  p?: boolean; // a price, kept in the database rather than in a built-in form
   fmt?: string; // Excel number format
   st?: number; // index into styles
   rs?: number; // merged rows

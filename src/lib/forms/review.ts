@@ -8,6 +8,7 @@ import { headerKey, type LabeledField } from "./fieldLabels";
 import type { FieldValues, PdfFormModel } from "./pdfForm";
 import { formatValue } from "./numFmt";
 import { lastName } from "./naming";
+import { answerText, isBlank, type Answers, type DetailFormDef } from "./native/types";
 
 export type SheetValues = Record<string, Record<string, Value>>;
 
@@ -31,7 +32,17 @@ export interface WorksheetDoc {
   values: SheetValues;
 }
 
-export type PacketDoc = DetailDoc | WorksheetDoc;
+// A built-in detail sheet: the form comes from the code, answers by field key.
+export interface NativeDetailDoc {
+  id: number;
+  kind: "native";
+  title: string;
+  room: string;
+  def: DetailFormDef;
+  values: Answers;
+}
+
+export type PacketDoc = DetailDoc | WorksheetDoc | NativeDetailDoc;
 
 export interface Check {
   level: "missing" | "check";
@@ -209,6 +220,23 @@ function summarizeDetail(doc: DetailDoc): RoomSummary {
   return { docId: doc.id, title: doc.title, room: doc.room, kind: "detail", header, purchased: [], selections };
 }
 
+function summarizeNative(doc: NativeDetailDoc): RoomSummary {
+  const header: Record<string, string> = {};
+  const headerKeys = ["client", "room", "designer", "date", "job", "color", "collection"];
+  const selections: RoomSummary["selections"] = [];
+  for (const s of doc.def.sections)
+    for (const f of s.fields) {
+      const v = doc.values[f.key];
+      if (headerKeys.includes(f.key)) {
+        header[f.key] = answerText(f, v);
+        continue;
+      }
+      if (isBlank(v)) continue;
+      selections.push({ label: `${s.title} / ${f.label}`, value: answerText(f, v) });
+    }
+  return { docId: doc.id, title: doc.title, room: doc.room, kind: "detail", header, purchased: [], selections };
+}
+
 // --- special orders ------------------------------------------------------
 
 // The material types used in JobTread, matched from what a detail sheet selects.
@@ -263,7 +291,7 @@ export interface PacketFacts {
 }
 
 export function reviewPacket(docs: PacketDoc[], facts: PacketFacts): { rooms: RoomSummary[]; specials: SpecialOrderItem[]; checks: Check[] } {
-  const rooms = docs.map((d) => (d.kind === "worksheet" ? summarizeWorksheet(d) : summarizeDetail(d)));
+  const rooms = docs.map((d) => (d.kind === "worksheet" ? summarizeWorksheet(d) : d.kind === "native" ? summarizeNative(d) : summarizeDetail(d)));
   const checks: Check[] = [];
   const add = (level: Check["level"], r: RoomSummary | undefined, message: string) =>
     checks.push({ level, docId: r?.docId, room: r ? `${r.title} (${r.kind === "worksheet" ? "work sheet" : "detail sheet"})` : undefined, message });
@@ -278,6 +306,18 @@ export function reviewPacket(docs: PacketDoc[], facts: PacketFacts): { rooms: Ro
     if (job && facts.jobNumber && job !== facts.jobNumber.replace(/\D/g, "")) add("check", r, `Job # ${r.header.job} does not match job ${facts.jobNumber}.`);
     if (r.header.client && who && !r.header.client.toLowerCase().includes(who)) add("check", r, `Client name "${r.header.client}" does not match ${facts.customer}.`);
     if (r.kind === "worksheet" && !r.salePrice) add("missing", r, "No sale price yet (nothing marked purchased).");
+  }
+
+  for (const d of docs) {
+    if (d.kind !== "native") continue;
+    const r = rooms.find((x) => x.docId === d.id);
+    // The site questions at the bottom of every detail sheet must be answered.
+    for (const s of d.def.sections)
+      for (const f of s.fields) {
+        if (f.type !== "choice" || f.options?.join() !== "Yes,No" || s.key !== "site") continue;
+        if (isBlank(d.values[f.key])) add("missing", r, `"${f.label}" is not answered.`);
+      }
+    if (d.values.measurements_final === "No") add("check", r, "Measurements are not final; resubmit as Final Measurements once measured.");
   }
 
   for (const d of docs) {

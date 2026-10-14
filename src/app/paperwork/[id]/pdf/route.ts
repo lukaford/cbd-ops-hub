@@ -2,6 +2,8 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { formTemplates, paperworkFiles } from "@/db/schema";
 import { loadPacket } from "@/lib/paperwork";
+import { inScope, visibleJobs } from "@/lib/auth/current";
+import type { DetailFormDef, Answers } from "@/lib/forms/native/types";
 import { buildPacketPdf } from "@/lib/forms/packetPdf";
 import type { WorkbookModel } from "@/lib/forms/sheetModel";
 import type { SheetValues } from "@/lib/forms/review";
@@ -13,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const db = await getDb();
   const lp = await loadPacket(db, Number((await params).id));
-  if (!lp) return new Response("Not found", { status: 404 });
+  if (!lp || !inScope(await visibleJobs(), lp.packet.jobNumber)) return new Response("Not found", { status: 404 });
   const detailIds = lp.docs.filter((d) => d.template.kind === "detail").map((d) => d.templateId);
   const blanks = detailIds.length ? await db.select({ id: formTemplates.id, file: formTemplates.file }).from(formTemplates).where(inArray(formTemplates.id, detailIds)) : [];
   const blank = new Map(blanks.map((b) => [b.id, b.file]));
@@ -27,9 +29,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     stamp: packet.version > 1 || packet.label !== "Sale Paperwork" ? `v${packet.version} ${packet.label}` : undefined,
     superseded: lp.newer ? `Superseded by v${lp.newer.version}` : packet.status === "draft" ? "Draft - not submitted" : undefined,
     docs: lp.docs.map((d) =>
-      d.template.kind === "worksheet"
-        ? { kind: "worksheet" as const, title: d.title, model: d.template.model as WorkbookModel, values: d.values as SheetValues }
-        : { kind: "detail" as const, title: d.title, template: blank.get(d.templateId)!, values: d.values as FieldValues },
+      d.native && "model" in d.native
+        ? { kind: "worksheet" as const, title: d.title, model: d.native.model, values: d.values as SheetValues }
+        : d.native
+          ? { kind: "native" as const, title: d.title, def: d.native.def as DetailFormDef, values: d.values as Answers }
+          : d.template.kind === "worksheet"
+            ? { kind: "worksheet" as const, title: d.title, model: d.template.model as WorkbookModel, values: d.values as SheetValues }
+            : { kind: "detail" as const, title: d.title, template: blank.get(d.templateId)!, values: d.values as FieldValues },
     ),
     notes: packet.notes,
     files: files.map((f) => ({ name: f.name, contentType: f.contentType, data: f.data })),

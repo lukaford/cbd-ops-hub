@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -10,8 +10,11 @@ import { parseWorkbook } from "@/lib/forms/sheetModel";
 import { parsePdfForm } from "@/lib/forms/pdfForm";
 import { labelFields, pdfTextItems } from "@/lib/forms/fieldLabels";
 import { templateInfo, PACKET_LABELS, SIGN_CONSENT } from "@/lib/forms/naming";
-import { addDoc, createPacket, loadPacket } from "@/lib/paperwork";
-import { currentStaff, inScope, visibleJobs } from "@/lib/auth/current";
+import { addDoc, createPacket, loadPacket, templateColumns } from "@/lib/paperwork";
+import { currentStaff, inScope, requireStaff, visibleJobs } from "@/lib/auth/current";
+import { BUILTIN_FORMS, builtinForm, ensureBuiltinTemplates, cleanDetailValues, detailAnswerRows, loadPrices, pricedModel, savePrices, worksheetAnswerRows, writeAnswers, WORKSHEETS, type WorksheetFormDef } from "@/lib/forms/native";
+import { stripPrices, type Prices } from "@/lib/forms/native/worksheetBuild";
+import type { Value } from "@/lib/forms/formula";
 
 const str = (form: FormData, k: string) => String(form.get(k) ?? "").trim();
 
@@ -124,6 +127,24 @@ export async function addSheet(form: FormData): Promise<void> {
   redirect(`/paperwork/doc/${docId}`);
 }
 
+// A room's built-in work sheet and detail sheet together (Wall Bed has only a detail sheet).
+export async function addRoom(form: FormData): Promise<void> {
+  const packetId = Number(form.get("packetId"));
+  const { db } = await editablePacket(packetId);
+  const room = str(form, "room");
+  const keys = BUILTIN_FORMS.filter((f) => f.room === room).map((f) => f.key);
+  if (!keys.length) redirect(`/paperwork/${packetId}`);
+  await ensureBuiltinTemplates(db);
+  const rows = await db.select({ id: formTemplates.id, builtinKey: formTemplates.builtinKey }).from(formTemplates).where(inArray(formTemplates.builtinKey, keys));
+  const title = str(form, "title") || room;
+  for (const k of keys) {
+    const t = rows.find((r) => r.builtinKey === k);
+    if (t) await addDoc(db, packetId, t.id, title);
+  }
+  revalidatePath(`/paperwork/${packetId}`);
+  redirect(`/paperwork/${packetId}#sheets`);
+}
+
 export async function removeDoc(form: FormData): Promise<void> {
   const db = await getDb();
   const [doc] = await db.select().from(paperworkDocs).where(eq(paperworkDocs.id, Number(form.get("id"))));
@@ -134,8 +155,33 @@ export async function removeDoc(form: FormData): Promise<void> {
   redirect(`/paperwork/${doc.packetId}`);
 }
 
+// Only the cells a built-in work sheet lets the designer fill, as numbers where the sheet expects them.
+function cleanSheetValues(def: WorksheetFormDef, raw: unknown): Record<string, Record<string, Value>> {
+  const allowed = new Map<string, "num" | "text" | "check" | "date">();
+  for (const s of def.layout.sections) for (const r of s.rows) for (const c of r.cells) if (c.kind !== "out" && c.kind !== "price") allowed.set(`${c.sheet}!${c.addr}`, c.kind);
+  for (const [k, c] of Object.entries(def.layout.header)) if (c) allowed.set(`${c.sheet}!${c.addr}`, k === "date" ? "num" : k === "job" ? "num" : "text");
+  const out: Record<string, Record<string, Value>> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [sheet, cells] of Object.entries(raw as Record<string, unknown>)) {
+    if (!cells || typeof cells !== "object") continue;
+    for (const [addr, v] of Object.entries(cells as Record<string, unknown>)) {
+      const kind = allowed.get(`${sheet}!${addr}`);
+      if (!kind || v === null || v === undefined || v === "") continue;
+      let val: Value;
+      if (kind === "text") val = String(v).slice(0, 300);
+      else if (typeof v === "number" && Number.isFinite(v)) val = v;
+      else if (typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) val = Number(v);
+      else if (typeof v === "string") val = v.slice(0, 60); // a job number with letters, say
+      else continue;
+      (out[sheet] ??= {})[addr] = val;
+    }
+  }
+  return out;
+}
+
 // Called from the sheet editors as the designer types.
 export async function saveDocValues(docId: number, values: unknown, title?: string): Promise<{ ok: boolean; error?: string; savedAt?: string }> {
+  await requireStaff("paperwork.write");
   const db = await getDb();
   const [doc] = await db.select().from(paperworkDocs).where(eq(paperworkDocs.id, docId));
   if (!doc) return { ok: false, error: "This sheet no longer exists." };
@@ -143,12 +189,75 @@ export async function saveDocValues(docId: number, values: unknown, title?: stri
   if (!p || !inScope(await visibleJobs(), p.jobNumber)) return { ok: false, error: "This sheet no longer exists." };
   if (p?.status !== "draft") return { ok: false, error: "This paperwork was submitted, so it can't be changed. Start a new version instead." };
   if (!values || typeof values !== "object") return { ok: false, error: "Nothing to save." };
+  const [template] = await db.select(templateColumns).from(formTemplates).where(eq(formTemplates.id, doc.templateId));
+  const def = builtinForm(template?.builtinKey);
   const now = new Date();
+  const newTitle = title?.trim() ? title.trim().slice(0, 80) : doc.title;
+  let clean: unknown = values;
+  if (def?.kind === "detail") clean = cleanDetailValues(def, values);
+  else if (def?.kind === "worksheet") clean = cleanSheetValues(def, values);
   await db
     .update(paperworkDocs)
-    .set({ values, updatedAt: now, ...(title?.trim() ? { title: title.trim().slice(0, 80) } : {}) })
+    .set({ values: clean, updatedAt: now, title: newTitle })
     .where(eq(paperworkDocs.id, docId));
+  // Built-in sheets also keep every answer as its own row for reports.
+  if (def) {
+    const rows =
+      def.kind === "detail"
+        ? detailAnswerRows(def, clean as Record<string, never>)
+        : worksheetAnswerRows(def, pricedModel(def, (await loadPrices(db, def.key))[def.key]), clean as Record<string, Record<string, Value>>);
+    await writeAnswers(db, { id: doc.id, packetId: doc.packetId, title: newTitle }, p.jobNumber, def.key, rows);
+  }
   return { ok: true, savedAt: now.toISOString() };
+}
+
+// --- prices for the built-in work sheets ---
+
+// Accepts the company work sheet files (.xlsx: prices read from the same cells)
+// or a prices file (.json) made from them.
+export async function uploadPrices(form: FormData): Promise<void> {
+  const staff = await requireStaff("pricebook.manage");
+  const db = await getDb();
+  const loaded: string[] = [];
+  const skipped: string[] = [];
+  for (const entry of form.getAll("files")) {
+    if (!(entry instanceof File) || !entry.size) continue;
+    try {
+      const bytes = new Uint8Array(await entry.arrayBuffer());
+      let all: Record<string, Prices> = {};
+      if (/\.json$/i.test(entry.name)) all = JSON.parse(new TextDecoder().decode(bytes));
+      else if (/\.xlsx$/i.test(entry.name)) {
+        const { prices } = stripPrices(await parseWorkbook(bytes));
+        // Match the file to the built-in work sheet whose cells it fills best.
+        const best = WORKSHEETS.map((d) => ({ d, hits: Object.keys(prices).filter((k) => d.model.sheets.some((s) => k.startsWith(`${s.name}!`))).length }))
+          .filter((x) => x.hits > 0)
+          .sort((a, b) => b.hits - a.hits)[0];
+        if (!best) throw new Error("its tabs don't match any built-in work sheet");
+        all = { [best.d.key]: prices };
+      } else throw new Error("use the work sheet .xlsx files or a prices .json file");
+      const counts = await savePrices(db, all, staff?.user.id ?? null);
+      if (!Object.keys(counts).length) throw new Error("no prices in it match the built-in work sheets");
+      for (const [k, n] of Object.entries(counts)) loaded.push(`${WORKSHEETS.find((w) => w.key === k)?.name ?? k} (${n})`);
+    } catch (err) {
+      skipped.push(`${entry.name}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  revalidatePath("/paperwork/prices");
+  const q = new URLSearchParams();
+  if (loaded.length) q.set("loaded", loaded.join(", "));
+  if (skipped.length) q.set("skipped", skipped.join(" | "));
+  redirect(`/paperwork/prices?${q}`);
+}
+
+export async function setPrice(form: FormData): Promise<void> {
+  const staff = await requireStaff("pricebook.manage");
+  const db = await getDb();
+  const key = str(form, "form");
+  const cell = str(form, "cell");
+  const raw = str(form, "value").replace(/[$,]/g, "");
+  if (raw !== "" && !isNaN(Number(raw))) await savePrices(db, { [key]: { [cell]: Number(raw) } }, staff?.user.id ?? null);
+  revalidatePath("/paperwork/prices");
+  redirect(`/paperwork/prices?form=${encodeURIComponent(key)}#${encodeURIComponent(cell)}`);
 }
 
 export async function saveNotes(form: FormData): Promise<void> {
@@ -250,6 +359,9 @@ export async function signPacket(form: FormData): Promise<{ ok: boolean; error?:
 export async function submitPacket(form: FormData): Promise<void> {
   const id = Number(form.get("packetId"));
   const { db } = await editablePacket(id);
+  // Built-in work sheets keep the prices they were sold at, whatever changes later.
+  const lp = await loadPacket(db, id);
+  for (const d of lp?.docs ?? []) if (d.native && "model" in d.native && !d.native.frozen) await db.update(paperworkDocs).set({ prices: d.native.prices }).where(eq(paperworkDocs.id, d.id));
   await db.update(paperworkPackets).set({ status: "submitted", submittedAt: new Date() }).where(eq(paperworkPackets.id, id));
   revalidatePath(`/paperwork/${id}`);
   revalidatePath("/paperwork");

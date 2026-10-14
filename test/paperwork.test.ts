@@ -7,7 +7,10 @@ import { packetFileName, templateInfo } from "@/lib/forms/naming";
 import { parseWorkbook } from "@/lib/forms/sheetModel";
 import { fillPdfForm, parsePdfForm } from "@/lib/forms/pdfForm";
 import { labelFields, pdfTextItems } from "@/lib/forms/fieldLabels";
-import { reviewPacket, type DetailDoc, type WorksheetDoc } from "@/lib/forms/review";
+import { reviewPacket, sheetSources, type DetailDoc, type WorksheetDoc } from "@/lib/forms/review";
+import { buildLayout, priceKeys, stripPrices, withPrices } from "@/lib/forms/native/worksheetBuild";
+import { BUILTIN_FORMS, cleanDetailValues, detailAnswerRows, WORKSHEETS } from "@/lib/forms/native";
+import { DETAIL_SHEETS, allFields } from "@/lib/forms/native/detailSheets";
 import { buildPacketPdf } from "@/lib/forms/packetPdf";
 import { contentHash } from "@/lib/paperwork";
 
@@ -223,5 +226,70 @@ describe("packet review", () => {
     // 2 work sheet tabs + 1 detail page + notes + signatures
     expect(out.getPageCount()).toBe(5);
     expect(out.getTitle()).toBe("63931 Smith - Sale Paperwork v1");
+  });
+});
+
+describe("built-in forms", () => {
+  it("takes prices out of a work sheet and puts them back for the same totals", async () => {
+    const wb = await parseWorkbook(await sampleWorkbook());
+    const { model, prices } = stripPrices(wb);
+    // No price is left in the form itself.
+    const comp = model.sheets.find((s) => s.name === "Closet Components")!;
+    expect(comp.cells.C3.v).toBeUndefined();
+    expect(comp.cells.C3.p).toBe(true);
+    expect(prices["Closet Components!C3"]).toBe(100);
+    expect(Object.values(prices)).toContain(0.6);
+    expect(JSON.stringify(model)).not.toMatch(/\b0\.6\b/);
+    const values = { "Closet Components": { B3: 2, B4: 5 }, "Closet Price Presentation": { E2: 1 } };
+    const before = evaluateWorkbook(sheetSources(wb), values);
+    const after = evaluateWorkbook(sheetSources(withPrices(model, prices)), values);
+    expect(after["Closet Price Presentation"].D6).toBeCloseTo(before["Closet Price Presentation"].D6 as number);
+    expect(after["Closet Price Presentation"].D6).toBeCloseTo(270);
+    // Without prices the form still works; totals are just zero.
+    expect(evaluateWorkbook(sheetSources(withPrices(model, {})), values)["Closet Price Presentation"].D6).toBe(0);
+  });
+
+  it("lays a work sheet out as lines to fill in", async () => {
+    const { model, prices } = stripPrices(await parseWorkbook(await sampleWorkbook()));
+    const layout = buildLayout(model, prices);
+    const rows = layout.sections.flatMap((s) => s.rows);
+    const panel = rows.find((r) => /12" deep panel/i.test(r.label))!;
+    expect(panel.cells.map((c) => c.kind)).toEqual(["num", "price", "out"]);
+  });
+
+  it("ships every built-in form with unique keys and no prices", () => {
+    expect(BUILTIN_FORMS.length).toBe(11);
+    for (const d of DETAIL_SHEETS) {
+      const keys = allFields(d).map((f) => f.key);
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+    for (const w of WORKSHEETS) {
+      expect(priceKeys(w.model).length).toBeGreaterThan(50);
+      for (const s of w.model.sheets) for (const c of Object.values(s.cells)) if (c.p) expect(c.v).toBeUndefined();
+    }
+  });
+
+  it("keeps only answers a detail sheet asks for, and stores one row each", () => {
+    const def = DETAIL_SHEETS.find((d) => d.key === "closet-detail")!;
+    const color = allFields(def).find((f) => f.key === "color")!;
+    const clean = cleanDetailValues(def, { color: color.options![0], nonsense: "x", pics_in_jobtread: true, measurements_final: "Maybe" });
+    expect(clean).toEqual({ color: color.options![0], pics_in_jobtread: true });
+    const rows = detailAnswerRows(def, clean);
+    expect(rows.map((r) => r.field).sort()).toEqual(["color", "pics_in_jobtread"]);
+    expect(rows.find((r) => r.field === "pics_in_jobtread")!.value).toBe("Yes");
+  });
+
+  it("prints a built-in detail sheet and checks its site questions", async () => {
+    const def = DETAIL_SHEETS.find((d) => d.key === "garage-detail")!;
+    const values = { client: "Jane Smith", job: "63931", measurements_final: "No" };
+    const r = reviewPacket([{ id: 1, kind: "native", title: "Garage", room: "Garage", def, values }], {
+      jobNumber: "63931",
+      customer: "Jane Smith",
+      gridCount: 1,
+      signatures: [],
+    });
+    expect(r.checks.map((c) => c.message)).toContain("Measurements are not final; resubmit as Final Measurements once measured.");
+    const bytes = await buildPacketPdf({ title: "t", docs: [{ kind: "native", title: "Garage", def, values }], notes: "", files: [], signatures: [], contentHash: "x", generatedAt: new Date() });
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThan(0);
   });
 });

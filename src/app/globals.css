@@ -261,3 +261,54 @@ h3.label { margin: 6px 0 0; }
 .pastebox .permgrid .checks { display: grid; align-content: start; gap: 6px; }
 .nav .who + .who { margin-left: 0; }
 .badge { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px; background: var(--crit); color: var(--panel); font-size: 11px; font-weight: 700; text-align: center; line-height: 18px; }
+
+/* Built-in (native) forms: detail sheets and work sheets */
+.nf { display: grid; gap: 12px; min-width: 0; }
+.nf-top { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: end; justify-content: space-between; }
+.nf-top h1 { margin: 0; }
+.nf-room { flex: 1 1 220px; max-width: 360px; }
+.nf-note { margin: 0; color: var(--muted); font-size: 13px; }
+.nf-index { display: flex; gap: 6px; overflow-x: auto; position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 6px 0; scrollbar-width: thin; }
+.nf-index a { flex: none; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: inherit; text-decoration: none; font-size: 13px; white-space: nowrap; }
+.nf-index a .n { margin-left: 6px; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 0 6px; font-size: 11px; font-weight: 600; }
+.nf-section { scroll-margin-top: 52px; }
+fieldset.nf-section { margin: 0; }
+.nf-section legend, .nf-section > h2 { font-family: var(--font-display); font-size: 20px; font-weight: 600; padding: 0 4px; margin: 0; }
+.nf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 16px; align-items: start; }
+.nf-grid > .wide { grid-column: 1 / -1; }
+.nf-field { display: grid; gap: 4px; min-width: 0; }
+.nf-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.nf-hint { display: block; font-size: 12px; color: var(--muted); font-weight: 400; }
+.nf-field input, .nf-field select, .nf-field textarea { border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; background: var(--bg); color: inherit; font: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
+.nf-field textarea { resize: vertical; }
+.nf-num input { max-width: 160px; }
+.nf-check { display: flex; gap: 8px; align-items: center; min-height: 40px; }
+.nf-check input, .nf-choice input { width: 18px; height: 18px; accent-color: var(--accent); }
+.nf-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.nf-choice { display: inline-flex; gap: 6px; align-items: center; min-height: 38px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+.nf-choice.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nf-choice:disabled { cursor: default; }
+
+.nw-totals { display: flex; flex-wrap: wrap; gap: 6px 18px; position: sticky; top: 0; z-index: 2; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-size: 14px; }
+.nw-totals:empty { display: none; }
+.nw-rows { display: grid; }
+.nw-row { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr); gap: 6px 14px; align-items: center; padding: 7px 4px; border-top: 1px solid var(--line); }
+.nw-row:first-child { border-top: 0; }
+.nw-row.on { background: var(--accent-soft); }
+.nw-label { font-size: 14px; }
+.nw-cells { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: end; }
+.nw-item, .nw-out { display: grid; gap: 2px; }
+.nw-item.grow { flex: 1 1 220px; }
+.nw-out { font-variant-numeric: tabular-nums; }
+.nw-line { display: inline-flex; gap: 6px; align-items: center; }
+.nw-qty, .nw-text { border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px; background: var(--bg); color: inherit; font: inherit; min-width: 0; }
+.nw-qty { width: 72px; text-align: right; }
+.nw-text { width: 100%; }
+.nw-check { display: inline-flex; gap: 6px; align-items: center; min-height: 36px; }
+.nw-check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.nw-price { color: var(--muted); font-variant-numeric: tabular-nums; }
+.nw-total { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 72px; }
+@media (max-width: 700px) {
+  .nw-row { grid-template-columns: 1fr; }
+  .nf-grid { grid-template-columns: 1fr; }
+}
