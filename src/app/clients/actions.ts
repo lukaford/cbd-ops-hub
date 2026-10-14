@@ -56,7 +56,7 @@ export async function makeClientLink(_prev: ActionResult, form: FormData): Promi
   const me = await requireStaff("clients.manage");
   const { db, client } = await ownClient(me, Number(form.get("id")));
   if (!client.active) return { error: "That client is switched off." };
-  const link = `${(await requestMeta()).origin}/portal/link/${await clientLoginLink(db, client.id, me?.user.id ?? null)}`;
+  const link = `${(await requestMeta()).linkOrigin}/portal/link/${await clientLoginLink(db, client.id, me?.user.id ?? null)}`;
   if (form.get("send") === "email" && client.email && emailEnabled()) {
     const sent = await sendEmail(client.email, "Your Closets by Design project", `Hi ${client.name},\n\nOpen your project here (the link works once, for 3 days):\n${link}\n`);
     return sent ? { message: `Emailed to ${client.email}.` } : { error: "The email didn't send. Copy the link instead.", link };

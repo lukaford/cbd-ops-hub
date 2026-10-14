@@ -3,6 +3,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { accountForSession, countUsers, ownJobNumbers, type Account, type StaffUser } from "./accounts";
+import { linkOrigin } from "./linkOrigin";
 import { can, type Access, type Permission } from "./permissions";
 
 export const ACCOUNT_COOKIE = "hub_account";
@@ -50,11 +51,14 @@ export async function requireStaff(permission: Permission): Promise<Staff | null
 
 export async function requestMeta() {
   const h = await headers();
+  const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000"}`;
   return {
     ip: (h.get("x-forwarded-for") ?? "").split(",")[0].trim(),
     userAgent: h.get("user-agent") ?? "",
     https: h.get("x-forwarded-proto") === "https",
-    origin: `${h.get("x-forwarded-proto") ?? "http"}://${h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000"}`,
+    origin,
+    // For links sent to other people: never "localhost" (see linkOrigin).
+    linkOrigin: linkOrigin(origin),
   };
 }
 

@@ -14,7 +14,7 @@ export async function emailMeALink(_prev: ActionResult, form: FormData): Promise
   const db = await getDb();
   const client = await findClientByEmail(db, String(form.get("email") ?? ""));
   if (client?.email) {
-    const link = `${(await requestMeta()).origin}/portal/link/${await clientLoginLink(db, client.id, null)}`;
+    const link = `${(await requestMeta()).linkOrigin}/portal/link/${await clientLoginLink(db, client.id, null)}`;
     await sendEmail(client.email, "Your Closets by Design sign-in link", `Hi ${client.name},\n\nOpen your project here (the link works once, for 3 days):\n${link}\n`);
   }
   return { message: "If that email is on file, a sign-in link is on its way. Check your inbox." };

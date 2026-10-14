@@ -55,7 +55,7 @@ export async function addUser(_prev: ActionResult, form: FormData): Promise<Acti
     throw err;
   }
   await assignJobs(db, result.user.id, list(form.get("jobs")), me.id);
-  const link = `${(await requestMeta()).origin}/invite/${result.token}`;
+  const link = `${(await requestMeta()).linkOrigin}/invite/${result.token}`;
   revalidatePath("/admin", "layout");
   const sent =
     emailEnabled() &&
@@ -87,7 +87,7 @@ export async function saveUser(_prev: ActionResult, form: FormData): Promise<Act
 export async function resetLink(_prev: ActionResult, form: FormData): Promise<ActionResult> {
   const me = await admin();
   const token = await passwordResetLink(await getDb(), Number(form.get("id")), me.id);
-  return { message: "Send them this link to choose a password (works once, for 2 hours):", link: `${(await requestMeta()).origin}/invite/${token}` };
+  return { message: "Send them this link to choose a password (works once, for 2 hours):", link: `${(await requestMeta()).linkOrigin}/invite/${token}` };
 }
 
 export async function saveCategoryAction(_prev: ActionResult, form: FormData): Promise<ActionResult> {
