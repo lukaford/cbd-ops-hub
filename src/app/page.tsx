@@ -5,7 +5,7 @@ import { visibleJobs } from "@/lib/auth/current";
 import { isJobAtRisk, limitBoard, loadJobBoard, type BoardJob } from "@/lib/jobBoard";
 import { SORTS, sortJobs, type SortKey } from "@/lib/jobFilters";
 import { MATERIALS, materialLabel, STAGES, stageInfo } from "@/lib/jobtread/fields";
-import { jobTreadConfigured, refreshFromJobTread } from "@/lib/jobtread/refresh";
+import { jobTreadConfigured, jobTreadRefreshing, keepJobTreadFresh } from "@/lib/jobtread/refresh";
 import { RISK_WINDOW_DAYS, type Risk } from "@/lib/manager/progress";
 import { STEPS } from "@/lib/manager/steps";
 import { refreshNow } from "./actions";
@@ -61,7 +61,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const params = await searchParams;
   const db = await getDb();
   const today = todayIn(TIME_ZONE);
-  const refresh = await refreshFromJobTread(db);
+  const refresh = await keepJobTreadFresh(db);
   const board = limitBoard(await loadJobBoard(db, today), await visibleJobs());
 
   if (!board.lastSync) {
@@ -138,7 +138,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         <form action={refreshNow}>
           <button className="btn primary" type="submit">Refresh now</button>
         </form>
-        <AutoRefresh everyMs={AUTO_REFRESH_MS} />
+        <AutoRefresh everyMs={AUTO_REFRESH_MS} refreshing={jobTreadRefreshing()} />
       </header>
 
       <nav className="tabs" aria-label="View">

@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
-import { refreshFromJobTread } from "@/lib/jobtread/refresh";
+import { startJobTreadRefresh } from "@/lib/jobtread/refresh";
 
 export async function refreshNow(): Promise<void> {
-  await refreshFromJobTread(await getDb(), true);
+  startJobTreadRefresh(await getDb());
   revalidatePath("/");
 }

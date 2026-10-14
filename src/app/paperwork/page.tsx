@@ -3,7 +3,7 @@ import { desc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { paperworkPackets } from "@/db/schema";
 import { activeTemplates, findJobs } from "@/lib/paperwork";
-import { refreshFromJobTread } from "@/lib/jobtread/refresh";
+import { keepJobTreadFresh } from "@/lib/jobtread/refresh";
 import { PACKET_LABELS, packetTitle } from "@/lib/forms/naming";
 import { inScope, visibleJobs } from "@/lib/auth/current";
 import { startPacket } from "./actions";
@@ -14,8 +14,8 @@ export default async function PaperworkPage({ searchParams }: { searchParams: Pr
   const sp = await searchParams;
   const q = sp.q ?? "";
   const db = await getDb();
-  // Searching uses the local copy of JobTread, so bring it up to date first (read only).
-  const sync = q ? await refreshFromJobTread(db) : undefined;
+  // Searching uses the local copy of JobTread; keep it current in the background (read only).
+  const sync = q ? await keepJobTreadFresh(db) : undefined;
   const scope = await visibleJobs();
   const [allPackets, templates, jobs] = await Promise.all([
     db.select().from(paperworkPackets).orderBy(desc(paperworkPackets.createdAt)).limit(scope ? 2000 : 200),

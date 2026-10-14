@@ -31,7 +31,7 @@ function longDate(iso: string): string {
 
 export default async function SchedulePage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
-  const { today, board, error } = await freshBoard();
+  const { today, board, error, refreshing } = await freshBoard();
   const mode = params.mode === "list" ? "list" : "calendar";
   const start = monthStart(typeof params.month === "string" ? params.month : undefined, today);
   const end = addDays(addMonths(start, 1), -1);
@@ -69,7 +69,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
         <div className="noprint" style={{ display: "flex", gap: 8 }}>
           <PrintButton />
         </div>
-        <AutoRefresh everyMs={3 * 60 * 1000} />
+        <AutoRefresh everyMs={3 * 60 * 1000} refreshing={refreshing} />
       </header>
 
       <div className="controls noprint">

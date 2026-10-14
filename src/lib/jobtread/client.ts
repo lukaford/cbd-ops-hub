@@ -24,6 +24,8 @@ export function paveClient(grantKey: string, opts: { url?: string; fetchImpl?: t
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ query: { $: { grantKey }, ...query } }),
       cache: "no-store",
+      // A JobTread request that never answers would otherwise hold up every refresh after it.
+      signal: AbortSignal.timeout(60_000),
     });
     const text = await res.text();
     if (!res.ok) throw new JobTreadError(`JobTread answered ${res.status}: ${text.slice(0, 200)}`);

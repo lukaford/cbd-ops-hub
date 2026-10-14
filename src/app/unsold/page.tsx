@@ -22,7 +22,7 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function UnsoldPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
-  const { today, board, error } = await freshBoard();
+  const { today, board, error, refreshing } = await freshBoard();
   const view: View = VIEWS.find((v) => v.key === params.view)?.key ?? "unsold";
   const q = (params.q ?? "").trim().toLowerCase();
   const from = ISO.test(params.from ?? "") ? params.from! : null;
@@ -58,7 +58,7 @@ export default async function UnsoldPage({ searchParams }: { searchParams: Promi
         <div className="noprint">
           <PrintButton />
         </div>
-        <AutoRefresh everyMs={3 * 60 * 1000} />
+        <AutoRefresh everyMs={3 * 60 * 1000} refreshing={refreshing} />
       </header>
 
       <nav className="tabs noprint" aria-label="View">
