@@ -13,11 +13,27 @@ export type FieldType =
   | "checks" // tick any of the options
   | "select"; // pick one from a long list
 
+// The answer types a sales manager can pick in the form editor.
+export const FIELD_TYPES: { type: FieldType; label: string; options: boolean }[] = [
+  { type: "select", label: "Dropdown", options: true },
+  { type: "choice", label: "Buttons: pick one", options: true },
+  { type: "checks", label: "Tick boxes: pick any", options: true },
+  { type: "check", label: "One tick box", options: false },
+  { type: "text", label: "Short text", options: false },
+  { type: "textarea", label: "Long text", options: false },
+  { type: "number", label: "Number", options: false },
+  { type: "date", label: "Date", options: false },
+];
+export const hasOptions = (t: FieldType) => FIELD_TYPES.find((x) => x.type === t)?.options ?? false;
+
 export interface FormField {
   key: string;
   label: string;
   type: FieldType;
   options?: string[];
+  list?: string; // a shared dropdown list (see options.ts); its choices replace options
+  required?: boolean; // the paperwork checks flag it when left blank
+  hidden?: boolean; // turned off by a sales manager: not asked on new paperwork
   hint?: string;
   wide?: boolean; // takes a whole row
   // Header fields filled from the job when the sheet is added.

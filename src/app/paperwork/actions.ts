@@ -12,6 +12,7 @@ import { labelFields, pdfTextItems } from "@/lib/forms/fieldLabels";
 import { templateInfo, PACKET_LABELS, SIGN_CONSENT } from "@/lib/forms/naming";
 import { addDoc, createPacket, loadPacket, templateColumns } from "@/lib/paperwork";
 import { currentStaff, inScope, requireStaff, visibleJobs } from "@/lib/auth/current";
+import { currentDetailForms } from "@/lib/forms/native/editing";
 import { BUILTIN_FORMS, builtinForm, ensureBuiltinTemplates, cleanDetailValues, detailAnswerRows, loadPrices, pricedModel, savePrices, worksheetAnswerRows, writeAnswers, WORKSHEETS, type WorksheetFormDef } from "@/lib/forms/native";
 import { stripPrices, type Prices } from "@/lib/forms/native/worksheetBuild";
 import type { Value } from "@/lib/forms/formula";
@@ -190,7 +191,8 @@ export async function saveDocValues(docId: number, values: unknown, title?: stri
   if (p?.status !== "draft") return { ok: false, error: "This paperwork was submitted, so it can't be changed. Start a new version instead." };
   if (!values || typeof values !== "object") return { ok: false, error: "Nothing to save." };
   const [template] = await db.select(templateColumns).from(formTemplates).where(eq(formTemplates.id, doc.templateId));
-  const def = builtinForm(template?.builtinKey);
+  const builtin = builtinForm(template?.builtinKey);
+  const def = builtin?.kind === "detail" ? ((await currentDetailForms(db)).get(builtin.key) ?? builtin) : builtin;
   const now = new Date();
   const newTitle = title?.trim() ? title.trim().slice(0, 80) : doc.title;
   let clean: unknown = values;
@@ -362,6 +364,8 @@ export async function submitPacket(form: FormData): Promise<void> {
   // Built-in work sheets keep the prices they were sold at, whatever changes later.
   const lp = await loadPacket(db, id);
   for (const d of lp?.docs ?? []) if (d.native && "model" in d.native && !d.native.frozen) await db.update(paperworkDocs).set({ prices: d.native.prices }).where(eq(paperworkDocs.id, d.id));
+  // Detail sheets keep the questions they were filled on, whatever a manager changes later.
+  for (const d of lp?.docs ?? []) if (d.native && !("model" in d.native) && !d.def) await db.update(paperworkDocs).set({ def: d.native.def }).where(eq(paperworkDocs.id, d.id));
   await db.update(paperworkPackets).set({ status: "submitted", submittedAt: new Date() }).where(eq(paperworkPackets.id, id));
   revalidatePath(`/paperwork/${id}`);
   revalidatePath("/paperwork");

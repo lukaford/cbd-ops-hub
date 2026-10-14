@@ -192,14 +192,14 @@ function siteSection(): FormSection {
     key: "site",
     title: "Measurements and site",
     fields: [
-      yesNo("measurements_final", "Measurements final"),
+      yesNo("measurements_final", "Measurements final", { required: true }),
       { key: "measurements_final_date", label: "If not final, date they will be final", type: "date" },
-      yesNo("obstacles_impacting", "Any obstacles impacting design"),
-      yesNo("obstacles_noted", "All obstacles noted and plotted"),
+      yesNo("obstacles_impacting", "Any obstacles impacting design", { required: true }),
+      yesNo("obstacles_noted", "All obstacles noted and plotted", { required: true }),
       text("property_type", "Type of property"),
       text("floor", "Floor"),
-      yesNo("van_parking", "Is parking available for van"),
-      yesNo("service_elevator", "Is there a service elevator"),
+      yesNo("van_parking", "Is parking available for van", { required: true }),
+      yesNo("service_elevator", "Is there a service elevator", { required: true }),
       { key: "special_notes", label: "Special notes", type: "textarea", wide: true },
     ],
   };
@@ -551,7 +551,18 @@ const wallBed: DetailFormDef = {
   ],
 };
 
-export const DETAIL_SHEETS: DetailFormDef[] = [closet, pantry, officeLike("Office"), wallBed, garage, officeLike("Laundry")];
+// Questions that use one of the shared lists name it, so a change to the list
+// reaches every form that uses it.
+function linkLists(def: DetailFormDef): DetailFormDef {
+  for (const s of def.sections)
+    for (const f of s.fields) {
+      const list = f.options && O.BUILTIN_LISTS.find((l) => l.options === f.options);
+      if (list) f.list = list.key;
+    }
+  return def;
+}
+
+export const DETAIL_SHEETS: DetailFormDef[] = [closet, pantry, officeLike("Office"), wallBed, garage, officeLike("Laundry")].map(linkLists);
 
 export function allFields(def: { sections: FormSection[] }): FormField[] {
   return def.sections.flatMap((s) => s.fields);

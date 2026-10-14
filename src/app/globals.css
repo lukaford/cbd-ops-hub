@@ -312,3 +312,26 @@ fieldset.nf-section { margin: 0; }
   .nw-row { grid-template-columns: 1fr; }
   .nf-grid { grid-template-columns: 1fr; }
 }
+
+/* Form editor (Paperwork → Edit forms) */
+.fe { display: grid; gap: 12px; }
+.fe-bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; justify-content: space-between; position: sticky; top: 0; z-index: 3; background: var(--bg); padding: 8px 0; border-bottom: 1px solid var(--line); }
+.fe-title { display: flex; flex-wrap: wrap; gap: 10px; flex: 1 1 320px; }
+.fe-title .nf-field:first-child { flex: 1 1 220px; }
+.fe-save { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fe-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.fe-toggle { font-size: 18px; width: 28px; }
+.fe-section-title { flex: 1 1 220px; font-family: var(--font-display); font-size: 20px; font-weight: 600; border: 1px solid transparent; border-radius: 6px; padding: 4px 8px; background: transparent; color: inherit; min-width: 0; }
+.fe-section-title:hover, .fe-section-title:focus { border-color: var(--line); background: var(--bg); }
+.fe-tools { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: auto; }
+.fe-tools .btn { padding: 4px 10px; }
+.fe-tools select { border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: var(--panel); color: inherit; font: inherit; max-width: 160px; }
+.fe-fields { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.fe-field { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; background: var(--panel); }
+.fe-field.off { opacity: .6; border-style: dashed; }
+.fe-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: end; }
+.fe-label { flex: 2 1 260px; }
+.fe-hint { flex: 1 1 220px; }
+.fe-options { display: grid; gap: 6px; }
+.fe-options select { max-width: 420px; }
+.fe-preview { margin: 0; font-size: 13px; }

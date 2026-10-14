@@ -11,7 +11,7 @@ PC today, hosted Postgres (Neon) later. Same tables either way; migrations in
 | Jobs and production | `jobtread_jobs`, `jobtread_syncs` | JobTread (read-only copy, rebuilt each sync) |
 | Folder steps | `jobs`, `folders`, `folder_steps`, `special_orders`, `import_batches` | Manager Special Orders paste (rebuilt each paste) |
 | Reports | `saved_reports` | The hub |
-| Sales paperwork | `form_templates`, `paperwork_packets`, `paperwork_docs`, `paperwork_answers`, `form_prices`, `paperwork_files`, `paperwork_signatures`, `paperwork_issues` | The hub |
+| Sales paperwork | `form_templates`, `paperwork_packets`, `paperwork_docs`, `paperwork_answers`, `form_prices`, `form_definitions`, `option_lists`, `paperwork_files`, `paperwork_signatures`, `paperwork_issues` | The hub |
 | **Accounts** | `users`, `staff_categories`, `notifications`, `designer_requests`, `user_categories`, `job_assignments`, `clients`, `client_jobs`, `auth_sessions`, `auth_tokens`, `audit_events` | The hub |
 
 Jobs are joined by **job number**, never by a row id, because the JobTread and
@@ -57,6 +57,15 @@ points elsewhere). Submitting a packet copies the prices into
 `paperwork_docs.prices`, so signed paperwork keeps the prices it was signed
 with. `scripts/build-worksheets.ts` turns a new revision of the work sheet
 files into the built-in forms and a prices file.
+
+Sales managers (permission `forms.manage`) edit the detail sheets on
+Paperwork → Edit forms. Their version of a form is one `form_definitions` row
+(the whole form as JSON); shared dropdown lists are `option_lists` rows, which
+replace the app's list with the same key or add new ones. Questions keep their
+key when reworded, so saved answers follow them. Submitting a packet copies
+each detail sheet's form into `paperwork_docs.def`, so later edits never
+change signed paperwork. Saved answers to a dropdown must be one of its current
+choices.
 
 ## Staff accounts and categories
 
