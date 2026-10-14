@@ -311,12 +311,9 @@ export function reviewPacket(docs: PacketDoc[], facts: PacketFacts): { rooms: Ro
   for (const d of docs) {
     if (d.kind !== "native") continue;
     const r = rooms.find((x) => x.docId === d.id);
-    // The site questions at the bottom of every detail sheet must be answered.
+    // Questions the form marks as required (such as the site questions) must be answered.
     for (const s of d.def.sections)
-      for (const f of s.fields) {
-        if (f.type !== "choice" || f.options?.join() !== "Yes,No" || s.key !== "site") continue;
-        if (isBlank(d.values[f.key])) add("missing", r, `"${f.label}" is not answered.`);
-      }
+      for (const f of s.fields) if (f.required && !f.hidden && isBlank(d.values[f.key])) add("missing", r, `"${f.label}" is not answered.`);
     if (d.values.measurements_final === "No") add("check", r, "Measurements are not final; resubmit as Final Measurements once measured.");
   }
 

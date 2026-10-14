@@ -5,8 +5,10 @@ import type { Answer, Answers, DetailFormDef, FormField } from "@/lib/forms/nati
 import { isBlank } from "@/lib/forms/native/types";
 import { useAutosave } from "./useAutosave";
 
-function Field({ f, value, set, locked }: { f: FormField; value: Answer | undefined; set: (v: Answer | undefined) => void; locked: boolean }) {
-  const id = `f-${f.key}`;
+function Field({ f: field, value, set, locked }: { f: FormField; value: Answer | undefined; set: (v: Answer | undefined) => void; locked: boolean }) {
+  const id = `f-${field.key}`;
+  // Required questions are marked; the paperwork checks list any left blank.
+  const f = field.required ? { ...field, label: `${field.label} *` } : field;
   const hint = f.hint ? <span className="nf-hint">{f.hint}</span> : null;
   switch (f.type) {
     case "check":
@@ -69,7 +71,7 @@ function Field({ f, value, set, locked }: { f: FormField; value: Answer | undefi
             {f.options!.map((o) => (
               <option key={o}>{o}</option>
             ))}
-            {typeof value === "string" && value && !f.options!.includes(value) && <option>{value}</option>}
+            {typeof value === "string" && value && !f.options!.includes(value) && <option value={value}>{value} (no longer offered: pick again)</option>}
           </select>
           {hint}
         </label>
@@ -130,6 +132,7 @@ export default function NativeDetailEditor(props: { docId: number; title: string
         </span>
       </div>
       {def.note && <p className="nf-note">{def.note}</p>}
+      {def.sections.some((s) => s.fields.some((f) => f.required)) && <p className="nf-note">* Required before the paperwork is complete.</p>}
       <nav className="nf-index" aria-label="Sections">
         {def.sections.map((s) => {
           const n = filled(s.fields.map((f) => f.key));

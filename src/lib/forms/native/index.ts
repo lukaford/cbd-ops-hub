@@ -202,7 +202,8 @@ export function cleanDetailValues(def: DetailFormDef, raw: unknown): Answers {
         const picked = v.filter((x): x is string => typeof x === "string" && (f.options ?? []).includes(x));
         if (picked.length) out[f.key] = picked;
       }
-    } else if (f.type === "choice") {
+    } else if (f.type === "choice" || f.type === "select") {
+      // Only the choices the form offers: sales managers set these to limit what designers pick.
       if (typeof v === "string" && f.options?.includes(v)) out[f.key] = v;
     } else if (f.type === "number") {
       const s = String(v).trim().slice(0, 20);

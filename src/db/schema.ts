@@ -168,6 +168,9 @@ export const paperworkDocs = pgTable("paperwork_docs", {
   // A built-in work sheet's prices, copied in when the paperwork is submitted so a
   // later price change never alters what the customer signed. Null while a draft.
   prices: jsonb("prices"),
+  // A built-in detail sheet's questions as they were when submitted, so later form
+  // edits never change signed paperwork. Null while a draft.
+  def: jsonb("def"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -203,6 +206,25 @@ export const formPrices = pgTable(
   },
   (t) => [primaryKey({ columns: [t.form, t.cell] })],
 );
+
+// A sales manager's edited version of a built-in detail sheet (questions, order,
+// dropdowns). Without a row the form is as built into the app.
+export const formDefinitions = pgTable("form_definitions", {
+  form: text("form").primaryKey(), // built-in key, e.g. "closet-detail"
+  def: jsonb("def").notNull(),
+  updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Dropdown lists shared by many questions (colors, handles, ...). A row replaces
+// the built-in list with the same key; managers can also add their own lists.
+export const optionLists = pgTable("option_lists", {
+  key: text("key").primaryKey(),
+  name: text("name").notNull(),
+  options: jsonb("options").notNull().default([]), // string[]
+  updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // Photos or scans added to a packet, such as hand-drawn grids.
 export const paperworkFiles = pgTable("paperwork_files", {

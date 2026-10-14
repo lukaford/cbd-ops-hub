@@ -85,3 +85,69 @@ export const GAMBIS_COLORS = ["White", "Black"];
 export const HEBGO_COLORS = ["Dark Grey", "Steel"];
 
 export const YES_NO = ["Yes", "No"];
+
+// The lists above by name, for the form editor. Sales managers can change any of
+// them (saved in option_lists) or add their own.
+export interface OptionList {
+  key: string;
+  name: string;
+  options: string[];
+}
+
+export const BUILTIN_LISTS: OptionList[] = [
+  { key: "colors", name: "Colors", options: COLORS },
+  { key: "colors_all", name: "Colors with wood grains (backing, face frame, drawer box)", options: COLORS_ALL },
+  { key: "deco_colors", name: "Deco door and drawer colors", options: DECO_COLORS },
+  { key: "molding_colors", name: "Molding colors", options: MOLDING_COLORS },
+  { key: "scallop_colors", name: "Scallop colors", options: SCALLOP_COLORS },
+  { key: "collections", name: "Collections", options: COLLECTIONS },
+  { key: "tear_out", name: "Tear out", options: TEAR_OUT },
+  { key: "handle_options", name: "Handle options", options: HANDLE_OPTIONS },
+  { key: "deco_door_styles", name: "Deco door styles", options: DECO_DOOR_STYLES },
+  { key: "bypass_door_styles", name: "Bypass door styles", options: BYPASS_DOOR_STYLES },
+  { key: "garage_bypass_styles", name: "Garage bypass door styles", options: GARAGE_BYPASS_STYLES },
+  { key: "deco_drawer_styles", name: "Deco drawer styles", options: DECO_DRAWER_STYLES },
+  { key: "insert_types", name: "Insert types", options: INSERT_TYPES },
+  { key: "insert_styles", name: "Insert styles", options: INSERT_STYLES },
+  { key: "handles", name: "Handles", options: HANDLES },
+  { key: "cabinet_handles", name: "Cabinet handles (with TAG pull)", options: CABINET_HANDLES },
+  { key: "knobs", name: "Knobs", options: KNOBS },
+  { key: "hardware_finishes", name: "Hardware finishes", options: HARDWARE_FINISHES },
+  { key: "crown_molding", name: "Crown molding", options: CROWN_MOLDING },
+  { key: "base_molding", name: "Base molding", options: BASE_MOLDING },
+  { key: "countertops", name: "Countertops", options: COUNTERTOPS },
+  { key: "office_countertops", name: "Office countertops", options: OFFICE_COUNTERTOPS },
+  { key: "edge_banding", name: "Edge banding", options: EDGE_BANDING },
+  { key: "butcher_block_sizes", name: "Butcher block sizes", options: BUTCHER_BLOCK_SIZES },
+  { key: "rod_finishes", name: "Rod finishes", options: ROD_FINISHES },
+  { key: "rack_finishes", name: "Rack finishes", options: RACK_FINISHES },
+  { key: "grommets_dbl", name: "Grommets (double)", options: GROMMETS_DBL },
+  { key: "grommets_sngl", name: "Grommets (single)", options: GROMMETS_SNGL },
+  { key: "grommets_rnd", name: "Grommets (round)", options: GROMMETS_RND },
+  { key: "baskets_12d", name: 'Baskets 12" deep', options: BASKETS_12D },
+  { key: "baskets_16d", name: 'Baskets 16" deep', options: BASKETS_16D },
+  { key: "ironing", name: "Ironing boards", options: IRONING },
+  { key: "jewelry_single", name: "Jewelry trays (single)", options: JEWELRY_SINGLE },
+  { key: "jewelry_double", name: "Jewelry trays (double)", options: JEWELRY_DOUBLE },
+  { key: "velvet_trays", name: "Velvet trays", options: VELVET_TRAYS },
+  { key: "mirrors", name: "Mirrors", options: MIRRORS },
+  { key: "toe_stops", name: "Toe stops", options: TOE_STOPS },
+  { key: "fence_stops", name: "Fence stops", options: FENCE_STOPS },
+  { key: "rail_stops", name: "Rail stops", options: RAIL_STOPS },
+  { key: "synergy_hampers", name: "Synergy hampers", options: SYNERGY_HAMPERS },
+  { key: "wire_hampers", name: "Wire hampers", options: WIRE_HAMPERS },
+  { key: "slideout_hampers", name: "Slide-out hampers", options: SLIDEOUT_HAMPERS },
+  { key: "can_shelf_lips", name: "Can shelf lips", options: CAN_SHELF_LIPS },
+  { key: "x_wine_racks", name: "X wine racks", options: X_WINE_RACKS },
+  { key: "sliding_wine", name: "Sliding wine racks", options: SLIDING_WINE },
+  { key: "sliding_spice", name: "Sliding spice racks", options: SLIDING_SPICE },
+  { key: "lattice_wine", name: "Lattice wine racks", options: LATTICE_WINE },
+  { key: "wine_scallops", name: "Wine scallops", options: WINE_SCALLOPS },
+  { key: "garage_base_types", name: "Garage base types", options: GARAGE_BASE_TYPES },
+  { key: "extrusions", name: "Extrusions", options: EXTRUSIONS },
+  { key: "design_wall_colors", name: "Design wall colors", options: DESIGN_WALL_COLORS },
+  { key: "garage_rod_colors", name: "Garage rod colors", options: GARAGE_ROD_COLORS },
+  { key: "gambis_colors", name: "Gambis colors", options: GAMBIS_COLORS },
+  { key: "hebgo_colors", name: "Hebgo colors", options: HEBGO_COLORS },
+  { key: "yes_no", name: "Yes / No", options: YES_NO },
+];

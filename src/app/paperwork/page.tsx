@@ -26,6 +26,7 @@ export default async function PaperworkPage({ searchParams }: { searchParams: Pr
   ]);
   const staff = await currentStaff();
   const managesPrices = !staff || can(staff.access, "pricebook.manage");
+  const managesForms = !staff || can(staff.access, "forms.manage");
   const prices = await loadPrices(db);
   const unpriced = WORKSHEETS.filter((w) => !prices[w.key]);
   const packets = allPackets.filter((p) => inScope(scope, p.jobNumber)).slice(0, 200);
@@ -43,14 +44,23 @@ export default async function PaperworkPage({ searchParams }: { searchParams: Pr
             JobTread.
           </p>
         </div>
-        {managesPrices && (
+        {(managesPrices || managesForms) && (
           <div className="actions">
-            <Link className="btn" href="/paperwork/prices">
-              Prices
-            </Link>
-            <Link className="btn" href="/paperwork/templates">
-              Forms ({templates.length})
-            </Link>
+            {managesForms && (
+              <Link className="btn" href="/paperwork/forms">
+                Edit forms
+              </Link>
+            )}
+            {managesPrices && (
+              <>
+                <Link className="btn" href="/paperwork/prices">
+                  Prices
+                </Link>
+                <Link className="btn" href="/paperwork/templates">
+                  Templates ({templates.length})
+                </Link>
+              </>
+            )}
           </div>
         )}
       </header>

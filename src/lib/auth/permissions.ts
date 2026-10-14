@@ -18,6 +18,7 @@ export const PERMISSIONS = {
   "paperwork.write": { area: "Paperwork", label: "Start, fill in and submit paperwork" },
   "paperwork.review": { area: "Paperwork", label: "Open and review submitted paperwork" },
   "pricebook.manage": { area: "Paperwork", label: "Upload paperwork templates and price books" },
+  "forms.manage": { area: "Paperwork", label: "Edit the sales forms and their dropdown lists" },
   "orders.manage": { area: "Operations", label: "Track material and special orders" },
   "production.update": { area: "Operations", label: "Update production steps" },
   "qa.signoff": { area: "Operations", label: "Sign off QA" },
@@ -81,6 +82,7 @@ const ROUTES: [prefix: string, anyOf: Permission[]][] = [
   ["/paperwork/templates/", ["pricebook.manage", "paperwork.write", "paperwork.review"]],
   ["/paperwork/templates", ["pricebook.manage"]],
   ["/paperwork/prices", ["pricebook.manage"]],
+  ["/paperwork/forms", ["forms.manage"]],
   ["/paperwork", ["paperwork.write", "paperwork.review"]],
   ["/catalog", ["pricebook.view", "pricebook.manage"]],
   ["/no-access", []],
@@ -112,6 +114,12 @@ export const DEFAULT_CATEGORIES: { name: string; description: string; jobScope: 
     description: "In-home sales: their own leads, jobs, paperwork and clients.",
     jobScope: "own",
     permissions: ["jobs.view", "unsold.view", "pricebook.view", "paperwork.write", "clients.view", "clients.manage"],
+  },
+  {
+    name: "Sales manager",
+    description: "Every job's paperwork, and sets up the sales forms and their dropdown lists.",
+    jobScope: "all",
+    permissions: ["jobs.view", "unsold.view", "pricebook.view", "paperwork.write", "paperwork.review", "forms.manage", "clients.view", "clients.manage", "jobs.assign"],
   },
   {
     name: "Sales office",

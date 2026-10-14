@@ -11,6 +11,7 @@ import type { FieldValues } from "./forms/pdfForm";
 import { toSerial } from "./forms/sheetModel";
 import { packetFileName, packetTitle } from "./forms/naming";
 import { builtinForm, ensureBuiltinTemplates, loadPrices, NATIVE_KINDS, pricedModel, type WorksheetFormDef } from "./forms/native";
+import { currentDetailForms } from "./forms/native/editing";
 import type { DetailFormDef, Answers } from "./forms/native/types";
 import type { Prices } from "./forms/native/worksheetBuild";
 
@@ -149,10 +150,12 @@ export interface LoadedDoc extends Doc {
 export async function attachNative<T extends Doc & { template: Template }>(db: Db, docs: T[]): Promise<(T & Pick<LoadedDoc, "native">)[]> {
   const needPrices = docs.some((d) => d.template.kind === NATIVE_KINDS.worksheet && !d.prices);
   const current = needPrices ? await loadPrices(db) : {};
+  // Detail sheets: the form as submitted, else as a sales manager last set it up.
+  const forms = docs.some((d) => d.template.kind === NATIVE_KINDS.detail && !d.def) ? await currentDetailForms(db) : new Map<string, DetailFormDef>();
   return docs.map((d) => {
     const def = builtinForm(d.template.builtinKey);
     if (!def) return d;
-    if (def.kind === "detail") return { ...d, native: { def } };
+    if (def.kind === "detail") return { ...d, native: { def: (d.def as DetailFormDef | null) ?? forms.get(def.key) ?? def } };
     const prices = (d.prices as Prices | null) ?? current[def.key] ?? {};
     return { ...d, native: { def, model: pricedModel(def, prices), prices, frozen: Boolean(d.prices) } };
   });
